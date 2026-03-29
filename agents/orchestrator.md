@@ -1,111 +1,169 @@
 ---
 name: Orchestrator Agent
-description: QA pipeline orchestrator - reads requirements, creates execution plan, delegates to specialized agents
+description: QA pipeline state machine — owns phase sequencing, retry policy, feedback routing, and resumability
 type: reference
 ---
 
 # Orchestrator Agent
 
 ## Purpose
-Central coordinator for QA workflows. Reads analyst requirements, creates a plan, and delegates to specialized agents.
+Runs the QA pipeline as a resumable state machine. The only module that knows
+about phase ordering, retry policy, and feedback-driven rewinds. All other
+agents are stateless — they receive a `PipelineState`, mutate artifacts, and
+return. The Orchestrator hides all coordination complexity behind a single call.
 
-## When to Use
-- When user asks for a full QA analysis (e.g., "Run QA on project X")
-- When task involves multiple QA steps (risk analysis → test design → execution → reporting)
-- When you need to coordinate between Test Designer, Risk Analyst, Test Executor, and Polarion Updater
-
-## Workflow
-
-```
-User Request
-    │
-    ▼
-┌─────────────────┐
-│  Orchestrator   │
-│  (this agent)   │
-└────────┬────────┘
-         │
-         ▼
-    ┌────────────┐
-    │   Parse    │
-    │ Requirements│
-    └─────┬──────┘
-         │
-         ▼
-    ┌────────────┐
-    │   Create  │
-    │    Plan   │
-    └─────┬──────┘
-         │
-    ┌────┴─────────────────────────────┐
-    │                                   │
-    ▼                                   ▼
-┌──────────────┐              ┌──────────────┐
-│Risk Analyst  │─────────────▶│Test Designer │
-│ (analyze)    │              │(design tests)│
-└──────────────┘              └──────┬───────┘
-                                      │
-                                      ▼
-                              ┌──────────────┐
-                              │   Coder     │
-                              │(write tests)│
-                              └──────┬───────┘
-                                      │
-                                      ▼
-                              ┌──────────────┐
-                              │Test Executor │
-                              │(run tests)   │
-                              └──────┬───────┘
-                                     │
-                              ┌──────┴───────┐
-                              ▼              ▼
-                       ┌──────────┐   ┌────────────┐
-                       │  Polarion│   │  Report    │
-                       │ Updater  │   │  Summary   │
-                       └──────────┘   └────────────┘
+```python
+state = orchestrator.run(scope="hi-tech/")
 ```
 
-## Input Format
+## What It Hides
 
-When invoking the Orchestrator, provide:
-1. **Requirements source** - file path or description
-2. **Scope** - which modules/files to analyze
-3. **Context** - project background, key files, dependencies
+Every other module is spared from knowing about:
+- Phase sequencing and legal transition rules
+- Retry budget management (per-phase, not per-run)
+- The distinction between fatal exceptions and non-fatal recorded errors
+- Feedback-driven rewinds (which failure type routes to which phase)
+- State persistence after every successful phase transition
+- Resume logic when a previous run was interrupted
 
-## Output Format
+## Pipeline Phases
 
-The Orchestrator produces:
-1. **QA Plan** - structured task list with dependencies
-2. **Agent invocations** - calls to delegate to specialized agents
-3. **Progress tracking** - status of each phase
-
-## Example Invocation
+Phases execute in this fixed order. The Orchestrator owns this sequence — no
+agent may advance the phase directly.
 
 ```
-Agent: Orchestrator
-Task: Run full QA on hi-tech project
-Input:
-  - Requirements: prompt.code-review-principal.md
-  - Scope: all Python files in hi-tech/
-  - Context: Twitter bot with Ollama, Tweepy, schedule library
+INIT → ANALYSIS → RISK → TEST_DESIGN → TEST_CODE → FEATURE_CODE → EXECUTION → REPORTING → DONE
+                                                          ▲               │
+                                                          └───────────────┘
+                                                        feedback rewind loop
 ```
 
-## Delegation Pattern
+| Phase | Agent | Produces |
+|-------|-------|----------|
+| ANALYSIS | Analyst | `codebase_snapshot`, `requirements` |
+| RISK | Risk Analyst | `risk_register` |
+| TEST_DESIGN | Test Designer | `test_suite_manifest` |
+| TEST_CODE | Test Coder | `test_file_path` |
+| FEATURE_CODE | Feature Implementer | `feature_files` |
+| EXECUTION | Test Executor | `execution_report` + optional `FeedbackEvent`s |
+| REPORTING | Reporter | `report_path` |
 
-The Orchestrator invokes other agents using the Agent tool:
-- **Risk Analyst**: For risk identification and edge case analysis
-- **Test Designer**: For generating test cases from risks
-- **Coder**: For writing test code and implementing features (TDD)
-- **Test Executor**: For running tests (local or pipeline)
-- **Polarion Updater**: For updating test management system (conditional)
+## Feedback Routing
 
-## How to Apply
+When Test Executor adds `FeedbackEvent`s to `PipelineState`, the Orchestrator
+routes them by priority before advancing. Higher rewinds subsume lower ones.
 
-1. User requests QA work
-2. Invoke Orchestrator with requirements + scope
-3. Orchestrator creates plan and delegates sequentially:
-   - Risk Analyst → Test Designer → Coder → Test Executor
-4. If Polarion integration needed, Orchestrator calls Polarion Updater with results
-5. Orchestrator produces final summary
+| `failure_type` | Rewinds to | Meaning |
+|----------------|------------|---------|
+| `new_risk` | `RISK` | Test revealed an undiscovered risk — re-analyse |
+| `feature_bug` | `FEATURE_CODE` | Implementation is wrong — fix the code |
+| `test_bug` | `TEST_CODE` | Test itself is broken — fix the test |
 
-**Why:** This agent provides a consistent QA workflow that ensures all phases are covered and the right specialists are engaged at the right time. Avoids ad-hoc, incomplete QA processes.
+Priority order: `new_risk` > `feature_bug` > `test_bug`. If a run produces
+multiple feedback types, only the highest-priority rewind fires. Lower-priority
+events are discarded — they will be re-evaluated after the higher rewind
+completes.
+
+## Retry Policy
+
+Each phase has its own retry budget, reset on every successful phase transition.
+
+- Agent raises exception → `retry_count` incremented, phase re-runs
+- Agent calls `state.record_error()` → same retry path (non-fatal)
+- `retry_count > max_retries` → `state.mark_failed()`, pipeline stops
+- Default `max_retries`: 3
+
+Retries are logged with attempt number. After exhaustion, `state.summary()`
+contains the full error history for diagnosis.
+
+## State Persistence
+
+After every successful phase transition, the Orchestrator serialises
+`PipelineState` to `.pipeline_state/{run_id}.json`. This enables:
+
+```bash
+# Resume an interrupted run from the last successful phase
+python main.py --scope hi-tech/ --resume .pipeline_state/run-1774813299.json
+```
+
+Persistence failure is non-fatal — the pipeline continues, but resumability
+is lost for that run.
+
+## Agent Protocol
+
+Every agent satisfies this protocol. The Orchestrator injects agents at
+construction time (dependency injection), making it testable with mocks.
+
+```python
+class Agent(Protocol):
+    name: str
+    def run(self, state: PipelineState) -> None: ...
+```
+
+Agents must:
+- Read inputs from `state.get_artifact(ArtifactKey.X)`
+- Write outputs via `state.set_artifact(ArtifactKey.X, value)`
+- Log non-fatal issues via `state.record_error("message")`
+- Add feedback via `state.add_feedback(FeedbackEvent(...))`
+- **Never** call `state.advance()` — that is exclusively the Orchestrator's right
+- Raise an exception only for unrecoverable errors
+
+## Entry Point
+
+```python
+# main.py
+orc = Orchestrator(
+    analyst=AnalystAgent(model="ollama/qwen2.5-coder:7b"),
+    risk_analyst=RiskAnalystAgent(model="ollama/qwen2.5-coder:7b"),
+    test_designer=TestDesignerAgent(model="ollama/qwen2.5-coder:7b"),
+    test_coder=TestCoderAgent(model="ollama/qwen2.5-coder:7b"),
+    feature_implementer=FeatureImplementerAgent(model="ollama/qwen2.5-coder:7b"),
+    test_executor=TestExecutorAgent(),       # no LLM — runs pytest directly
+    reporter=ReporterAgent(backend="local"), # or backend="polarion"
+    state_dir=Path(".pipeline_state"),
+    max_retries=3,
+)
+
+state = orc.run(scope="hi-tech/")
+# or
+state = orc.run(scope="hi-tech/", resume_from=Path(".pipeline_state/run-xyz.json"))
+```
+
+## Output
+
+`orchestrator.run()` always returns the final `PipelineState`. Inspect
+`state.phase` to determine outcome.
+
+```python
+if state.phase == Phase.DONE:
+    print(f"Report: {state.get_artifact(ArtifactKey.REPORT_PATH)}")
+else:
+    # Phase.FAILED — human intervention required
+    print(state.summary())
+```
+
+`state.summary()` prints:
+
+```
+Run:     run-1774813299
+Scope:   hi-tech/
+Phase:   FAILED
+Retries: 3/3
+Artifacts produced: ['codebase_snapshot', 'requirements', 'risk_register']
+Pending feedback:   0
+Errors logged:      4
+--- Errors ---
+  [RISK] Model returned malformed JSON on attempt 1
+  [RISK] Model returned malformed JSON on attempt 2
+  [FATAL] Phase RISK exceeded 3 retries.
+```
+
+## Implementation Reference
+
+- `pipeline_state.py` — `PipelineState`, `Phase`, `ArtifactKey`, `FeedbackEvent`
+- `orchestrator.py` — `Orchestrator`, `Agent` protocol, `FEEDBACK_ROUTING`
+- `test_pipeline.py` — 29 tests covering all behaviours above
+
+**Why:** The Orchestrator earns its existence by hiding genuinely complex state
+machine logic. Agents stay simple and stateless. The pipeline is resumable,
+debuggable, and testable with mocks at every seam.
