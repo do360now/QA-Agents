@@ -1,215 +1,196 @@
 ---
 name: Test Executor Agent
-description: Runs the test suite, collects results, and emits FeedbackEvents for failures that need routing
+description: Runs the pytest test suite locally, collects results, and produces junit-xml output for the Test Reporter. Pipeline execution supported as a secondary mode.
 type: reference
 ---
 
 # Test Executor Agent
 
 ## Purpose
-Executes the test suite and does two things with the results:
-1. Writes an `execution_report` artifact for the Reporter
-2. Classifies failures and emits `FeedbackEvent`s for the Orchestrator to route
-
-This is the only agent that does not call an LLM. It runs `pytest` as a
-subprocess, parses stdout, and makes routing decisions based on the error types
-it sees.
+Executes the pytest test suite and collects structured results. Primary mode is local execution producing a `junit-xml` report that the Test Reporter can consume for TC mapping and traceability. Pipeline execution is supported as a secondary mode when local execution is not available.
 
 ## When to Use
-- Phase.EXECUTION — after Feature Implementer completes
-- After every feedback rewind that modified test or feature code
-
-## Inputs
-
-From `PipelineState`:
-```python
-state.get_artifact(ArtifactKey.TEST_FILE_PATH)    # which file to run
-state.get_artifact(ArtifactKey.FEATURE_FILES)     # for context on what changed
-```
+- After Test Coder has written test functions
+- When developer requests a test run after implementing a feature
+- When validating that a bug fix does not regress existing tests
+- When producing evidence for the Test Reporter
 
 ## Execution Modes
 
-### Mode 1: Local (default)
+### Mode 1: Local Execution (Primary)
+
+Run pytest directly on the local system. Always include `--junit-xml` so Test Reporter can process results.
+
+**Standard run — full suite:**
 ```bash
-# Full suite
-python -m pytest test_bot.py -v --tb=short --json-report --json-report-file=.report.json
-
-# After feature_bug rewind — only re-run affected tests
-python -m pytest test_bot.py -k "test_corrupt_date or test_empty_pubdate" -v
-
-# With coverage
-python -m pytest test_bot.py --cov=. --cov-report=term-missing
+python -m pytest test_bot.py -v --junit-xml=test_results/run_$(date +%Y%m%d_%H%M%S).xml
 ```
 
-### Mode 2: Pipeline
+**With coverage:**
 ```bash
-# GitHub Actions
-gh run list --branch main --limit 1
+python -m pytest test_bot.py -v \
+  --junit-xml=test_results/run_$(date +%Y%m%d_%H%M%S).xml \
+  --cov=. \
+  --cov-report=term-missing \
+  --cov-report=html:test_results/coverage_html
+```
+
+**Specific class only:**
+```bash
+python -m pytest test_bot.py::TestNewsFetcher -v \
+  --junit-xml=test_results/run_$(date +%Y%m%d_%H%M%S).xml
+```
+
+**Single test:**
+```bash
+python -m pytest test_bot.py::TestNewsFetcher::test_corrupt_date_sorts_last -v \
+  --junit-xml=test_results/run_$(date +%Y%m%d_%H%M%S).xml
+```
+
+**With markers (skip slow/integration tests):**
+```bash
+python -m pytest test_bot.py -m "not slow and not integration" -v \
+  --junit-xml=test_results/run_$(date +%Y%m%d_%H%M%S).xml
+```
+
+### Output Directory
+
+Always write results to `test_results/` to keep them separate from source code:
+
+```
+test_results/
+├── run_20260329_143012.xml     ← junit-xml (consumed by Test Reporter)
+├── run_20260329_143012.log     ← full terminal output captured
+└── coverage_html/              ← coverage report (if --cov used)
+    ├── index.html
+    └── ...
+```
+
+Ensure `test_results/` exists before running:
+```bash
+mkdir -p test_results
+```
+
+### Capturing Terminal Output
+
+Always tee output to a log file alongside the junit-xml:
+
+```bash
+python -m pytest test_bot.py -v \
+  --junit-xml=test_results/run_$(date +%Y%m%d_%H%M%S).xml \
+  2>&1 | tee test_results/run_$(date +%Y%m%d_%H%M%S).log
+```
+
+The `.log` file becomes evidence in the Test Reporter's run document.
+
+---
+
+### Mode 2: Pipeline Execution (Secondary)
+
+Use when local execution is not available or when the full CI environment is required.
+
+**GitHub Actions:**
+```bash
+gh run list --branch main --limit 5
 gh run watch [run_id]
-gh run view [run_id] --log
+gh run download [run_id] --name test-results --dir test_results/
 ```
 
-## Failure Classification
-
-This is the core logic of this agent. Every `FAIL` or `ERROR` result is
-classified before being written to state. Classification is rule-based —
-no LLM required.
-
-| Error pattern | `failure_type` | Rewinds to |
-|---------------|----------------|------------|
-| `AttributeError`, `ImportError`, `NameError` in test body | `test_bug` | TEST_CODE |
-| `AssertionError` with wrong expected value | `feature_bug` | FEATURE_CODE |
-| `Exception` raised by production code (not test) | `feature_bug` | FEATURE_CODE |
-| Test reveals behaviour not in Risk Register | `new_risk` | RISK |
-| `SyntaxError` in test file | `test_bug` | TEST_CODE |
-| `SyntaxError` in feature file | `feature_bug` | FEATURE_CODE |
-
-**Classification is conservative**: when ambiguous, prefer `feature_bug` over
-`test_bug`. It is cheaper to re-run Feature Implementer than to wrongly blame
-the tests.
-
-**Do not classify SKIP or XFAIL as failures.** These are documented and
-intentional.
-
-## Emitting FeedbackEvents
-
-After classifying failures, add events to state before the Orchestrator
-reads them:
-
-```python
-# feature code returned wrong value
-state.add_feedback(FeedbackEvent(
-    test_id="TC-R1-001",
-    failure_type="feature_bug",
-    detail="AssertionError: news_list[0].article.link == 'https://example.com/bad', expected 'good'",
-    target_phase=Phase.FEATURE_CODE,
-))
-
-# test references a class that doesn't exist
-state.add_feedback(FeedbackEvent(
-    test_id="TC-T1-001",
-    failure_type="test_bug",
-    detail="AttributeError: module 'config' has no attribute 'Config'",
-    target_phase=Phase.TEST_CODE,
-))
-
-# test exposed a completely untracked risk
-state.add_feedback(FeedbackEvent(
-    test_id="TC-R2-001",
-    failure_type="new_risk",
-    detail="requests.get() hung for 30s with no timeout — risk not in register",
-    target_phase=Phase.RISK,
-))
-```
-
-**Only emit FeedbackEvents for failures worth rewinding for.** If a test
-fails for a trivial reason (e.g. wrong import alias), fix it in the report
-and flag it as `test_bug`. Do not emit `new_risk` unless the failure reveals
-genuinely undiscovered behaviour.
-
-**The Orchestrator routes by priority.** You do not need to pick one type —
-emit all that apply. The Orchestrator will take the highest-priority rewind.
-
-## Output Artifact
-
-```python
-state.set_artifact(ArtifactKey.EXECUTION_REPORT, {
-    "mode": "local",
-    "timestamp": "2026-03-29T10:00:00Z",
-    "duration_s": 12.4,
-    "summary": {
-        "pass": 26,
-        "fail": 2,
-        "skip": 1,
-        "error": 0,
-        "xfail": 0,
-        "xpass": 0,
-    },
-    "results": [
-        {
-            "test_id": "TC-R1-001",
-            "test_name": "TestDateSorting::test_corrupt_date_sorts_last",
-            "status": "FAIL",
-            "duration_s": 0.12,
-            "error": "AssertionError: assert 'https://example.com/bad' == 'https://example.com/good'",
-            "failure_type": "feature_bug",
-        },
-        {
-            "test_id": "TC-S1-001",
-            "test_name": "TestPathSecurity::test_path_traversal_blocked",
-            "status": "PASS",
-            "duration_s": 0.03,
-            "error": None,
-            "failure_type": None,
-        },
-        # ...
-    ],
-    "coverage": {
-        "news.py": 87,
-        "config.py": 94,
-        "main.py": 61,
-    },
-    "feedback_emitted": ["feature_bug", "test_bug"],
-})
-```
-
-## Flakiness Detection
-
-If a test fails, re-run it in isolation before classifying:
-
+**GitLab CI:**
 ```bash
-python -m pytest test_bot.py::TestDateSorting::test_corrupt_date_sorts_last -v --count=3
+glab ci list
+glab ci status [pipeline_id]
+# Download artifacts after completion
 ```
 
-If it passes on re-run: mark as `XFAIL` with note "flaky — passes in isolation".
-Do not emit a FeedbackEvent for flaky tests. Log to `state.record_error()` so
-it appears in the report.
+When using pipeline mode, download the junit-xml artifact and log to `test_results/` before invoking the Test Reporter — same directory structure as local mode.
 
-## Output Summary
+---
+
+## Input
+
+From Test Coder or Orchestrator:
+- Test file location (e.g., `test_bot.py`)
+- Execution scope (full suite, specific class, or specific TCs)
+- Whether coverage is needed
+- Mode preference (local or pipeline)
+
+## Output Format
+
+### Execution Summary (for Orchestrator and Test Reporter)
 
 ```markdown
-## Test Executor Output
+## Test Execution Results
 
-**Mode:** Local
-**Duration:** 12.4s
-**Timestamp:** 2026-03-29 10:00:00 UTC
+**Execution Mode:** Local
+**Timestamp:** 2026-03-29 14:30:12 UTC
+**Duration:** 52s
+**Command:** python -m pytest test_bot.py -v --junit-xml=test_results/run_20260329_143012.xml
 
-### Results
-| Status | Count |
-|--------|-------|
-| PASS | 26 |
-| FAIL | 2 |
-| SKIP | 1 |
+### Summary
+| Status  | Count |
+|---------|-------|
+| PASS    | 47    |
+| FAIL    | 3     |
+| SKIP    | 2     |
+| ERROR   | 0     |
+| Total   | 52    |
+
+### Output Files
+| File | Purpose |
+|------|---------|
+| test_results/run_20260329_143012.xml | junit-xml — consumed by Test Reporter |
+| test_results/run_20260329_143012.log | Terminal output — evidence |
+| test_results/coverage_html/index.html | Coverage report (if run with --cov) |
 
 ### Failed Tests
-| TC-ID | Test | Error | Classification |
-|-------|------|-------|----------------|
-| TC-R1-001 | test_corrupt_date_sorts_last | AssertionError | feature_bug |
-| TC-T1-001 | test_config_missing_url_raises | AttributeError | test_bug |
+| Test Function | Class | Error Summary |
+|---------------|-------|---------------|
+| test_corrupt_date_sorts_last | TestDateSorting | AssertionError: expected 'good' link at index 0 |
+| test_path_traversal_blocked | TestImageFinder | OSError not raised |
+| test_config_missing_key | TestConfig | KeyError: 'api_key' |
 
-### FeedbackEvents Emitted
-- feature_bug → Orchestrator will rewind to FEATURE_CODE
-- test_bug → lower priority, will not fire this cycle
-
-### Coverage
-- news.py: 87%
-- config.py: 94%
-- main.py: 61% ← below threshold
-
-**Next:** Orchestrator routes feedback (Phase.EXECUTION → Phase.FEATURE_CODE)
+### Skipped Tests
+| Test Function | Reason |
+|---------------|--------|
+| test_large_feed_performance | @pytest.mark.slow |
+| test_pipeline_integration | @pytest.mark.integration |
 ```
+
+## Result Status Codes
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| PASS | Assertion passed | Record success |
+| FAIL | Assertion failed | Record failure, developer investigates |
+| SKIP | `pytest.skip()` or marker | Document reason |
+| ERROR | Exception before assertion | Test itself has a bug — fix test code |
+| XFAIL | Expected failure (`@pytest.mark.xfail`) | Acceptable; record |
+| XPASS | Unexpected pass | Review whether xfail mark should be removed |
 
 ## Environment Requirements
 
 ```
 Python 3.12+
-pytest
-pytest-json-report    # structured output parsing
-pytest-cov            # coverage (optional but recommended)
+pytest >= 7.0
+pytest-cov (if coverage needed)
+venv activated with project dependencies installed
 ```
 
-**Why:** Test Executor earns its place by being the only agent that sees ground
-truth — what the code actually does, not what it's supposed to do. The
-FeedbackEvent classification is what makes the pipeline self-correcting rather
-than just a linear sequence. Without it, failures are dead ends. With it, they
-drive the next iteration.
+Verify before running:
+```bash
+python --version
+python -m pytest --version
+pip show pytest-cov
+```
+
+## How to Apply
+
+1. Confirm `test_results/` directory exists (`mkdir -p test_results`)
+2. Determine scope (full suite vs. specific class/TC list)
+3. Build the pytest command with `--junit-xml` pointing to `test_results/`
+4. Execute with `tee` to capture log alongside xml
+5. Parse terminal output for the summary table above
+6. Pass execution summary + file paths to Test Reporter
+
+**Why:** Mandating `--junit-xml` output decouples execution from reporting. The Test Reporter gets a stable, machine-readable result file it can parse for TC mapping regardless of how the test run was triggered. The `.log` file preserves the full human-readable output as audit evidence without requiring the reporter to re-run anything.

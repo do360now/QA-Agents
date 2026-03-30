@@ -1,169 +1,202 @@
 ---
 name: Orchestrator Agent
-description: QA pipeline state machine — owns phase sequencing, retry policy, feedback routing, and resumability
+description: QA pipeline orchestrator - reads requirements, creates execution plan, delegates to specialized agents, enforces human review gate
 type: reference
 ---
 
 # Orchestrator Agent
 
 ## Purpose
-Runs the QA pipeline as a resumable state machine. The only module that knows
-about phase ordering, retry policy, and feedback-driven rewinds. All other
-agents are stateless — they receive a `PipelineState`, mutate artifacts, and
-return. The Orchestrator hides all coordination complexity behind a single call.
+Central coordinator for QA workflows. Reads requirements, creates a structured plan, delegates to specialized agents, and enforces a mandatory human review checkpoint before any work items are created or code is written.
 
-```python
-state = orchestrator.run(scope="hi-tech/")
-```
+## When to Use
+- When user asks for a full QA analysis (e.g., "Run QA on project X")
+- When task involves multiple QA steps (risk analysis → test design → human gate → test coding → execution → reporting)
+- When coordinating between Risk Analyst, Test Designer, Test Coder, Test Executor, and Test Reporter
 
-## What It Hides
-
-Every other module is spared from knowing about:
-- Phase sequencing and legal transition rules
-- Retry budget management (per-phase, not per-run)
-- The distinction between fatal exceptions and non-fatal recorded errors
-- Feedback-driven rewinds (which failure type routes to which phase)
-- State persistence after every successful phase transition
-- Resume logic when a previous run was interrupted
-
-## Pipeline Phases
-
-Phases execute in this fixed order. The Orchestrator owns this sequence — no
-agent may advance the phase directly.
+## Workflow
 
 ```
-INIT → ANALYSIS → RISK → TEST_DESIGN → TEST_CODE → FEATURE_CODE → EXECUTION → REPORTING → DONE
-                                                          ▲               │
-                                                          └───────────────┘
-                                                        feedback rewind loop
+User Request
+    │
+    ▼
+┌─────────────────┐
+│  Orchestrator   │
+│  (this agent)   │
+└────────┬────────┘
+         │
+         ▼
+    ┌────────────┐
+    │   Parse    │
+    │Requirements│
+    └─────┬──────┘
+         │
+         ▼
+    ┌────────────┐
+    │    Risk    │
+    │  Analyst   │◄── Risk Register + Edge Cases + Coverage Gaps
+    └─────┬──────┘
+         │
+         ▼
+    ┌────────────┐
+    │    Test    │
+    │  Designer  │◄── Test Case Specs + Polarion Work Item blocks
+    └─────┬──────┘
+         │
+         ▼
+┌────────────────────────────────────┐
+│         ⚠ HUMAN GATE ⚠            │
+│                                    │
+│  Orchestrator PAUSES here.         │
+│  Outputs full review package:      │
+│  - Risk Register                   │
+│  - Test Case Specs                 │
+│  - Polarion Work Item blocks       │
+│                                    │
+│  Human reviews and responds:       │
+│  [APPROVED]  → continue pipeline   │
+│  [REJECTED]  → re-run from Risk    │
+│               Analyst with notes   │
+│  [PARTIAL]   → list which TCs      │
+│               to proceed with      │
+└────────────────┬───────────────────┘
+                 │ (approved)
+                 ▼
+    ┌────────────┐
+    │    Test    │
+    │   Coder    │◄── Writes pytest code from approved specs
+    └─────┬──────┘
+         │
+         ▼
+    ┌────────────┐
+    │    Test    │
+    │  Executor  │◄── Runs suite locally, outputs junit-xml
+    └─────┬──────┘
+         │
+         ▼
+    ┌────────────┐
+    │    Test    │
+    │  Reporter  │◄── Maps results → TCs, produces test run document
+    └────────────┘
 ```
 
-| Phase | Agent | Produces |
-|-------|-------|----------|
-| ANALYSIS | Analyst | `codebase_snapshot`, `requirements` |
-| RISK | Risk Analyst | `risk_register` |
-| TEST_DESIGN | Test Designer | `test_suite_manifest` |
-| TEST_CODE | Test Coder | `test_file_path` |
-| FEATURE_CODE | Feature Implementer | `feature_files` |
-| EXECUTION | Test Executor | `execution_report` + optional `FeedbackEvent`s |
-| REPORTING | Reporter | `report_path` |
+## Human Gate — Detail
 
-## Feedback Routing
+This is the most critical control point in the pipeline. The Orchestrator must **never** automatically proceed past this gate.
 
-When Test Executor adds `FeedbackEvent`s to `PipelineState`, the Orchestrator
-routes them by priority before advancing. Higher rewinds subsume lower ones.
+### What the Orchestrator presents at the gate
 
-| `failure_type` | Rewinds to | Meaning |
-|----------------|------------|---------|
-| `new_risk` | `RISK` | Test revealed an undiscovered risk — re-analyse |
-| `feature_bug` | `FEATURE_CODE` | Implementation is wrong — fix the code |
-| `test_bug` | `TEST_CODE` | Test itself is broken — fix the test |
+```markdown
+## ⚠ QA Review Package — Awaiting Approval
 
-Priority order: `new_risk` > `feature_bug` > `test_bug`. If a run produces
-multiple feedback types, only the highest-priority rewind fires. Lower-priority
-events are discarded — they will be re-evaluated after the higher rewind
-completes.
+**Project:** [project name]
+**Date:** YYYY-MM-DD
+**Generated by:** Risk Analyst + Test Designer
 
-## Retry Policy
+### Risks Identified
+[Full Risk Register table]
 
-Each phase has its own retry budget, reset on every successful phase transition.
+### Test Cases Designed
+[Full list of TC specs]
 
-- Agent raises exception → `retry_count` incremented, phase re-runs
-- Agent calls `state.record_error()` → same retry path (non-fatal)
-- `retry_count > max_retries` → `state.mark_failed()`, pipeline stops
-- Default `max_retries`: 3
+### Polarion Work Items Ready to Copy
+[Polarion-formatted blocks for each TC]
 
-Retries are logged with attempt number. After exhaustion, `state.summary()`
-contains the full error history for diagnosis.
+---
+**Next step:** Review the above.
 
-## State Persistence
-
-After every successful phase transition, the Orchestrator serialises
-`PipelineState` to `.pipeline_state/{run_id}.json`. This enables:
-
-```bash
-# Resume an interrupted run from the last successful phase
-python main.py --scope hi-tech/ --resume .pipeline_state/run-1774813299.json
+Reply with one of:
+- `APPROVED` — proceed to test coding and execution
+- `REJECTED: [notes]` — re-run risk analysis with your feedback
+- `PARTIAL: TC-R1-001, TC-S2-001` — proceed with listed TCs only
 ```
 
-Persistence failure is non-fatal — the pipeline continues, but resumability
-is lost for that run.
+### Gate response handling
 
-## Agent Protocol
+| Response | Orchestrator Action |
+|----------|---------------------|
+| `APPROVED` | Invoke Test Coder with all approved specs |
+| `REJECTED: [notes]` | Re-invoke Risk Analyst with original requirements + rejection notes |
+| `PARTIAL: [TC list]` | Invoke Test Coder with only the listed TCs |
 
-Every agent satisfies this protocol. The Orchestrator injects agents at
-construction time (dependency injection), making it testable with mocks.
+The Orchestrator logs the gate outcome and includes it in the final report.
 
-```python
-class Agent(Protocol):
-    name: str
-    def run(self, state: PipelineState) -> None: ...
-```
+## Input Format
 
-Agents must:
-- Read inputs from `state.get_artifact(ArtifactKey.X)`
-- Write outputs via `state.set_artifact(ArtifactKey.X, value)`
-- Log non-fatal issues via `state.record_error("message")`
-- Add feedback via `state.add_feedback(FeedbackEvent(...))`
-- **Never** call `state.advance()` — that is exclusively the Orchestrator's right
-- Raise an exception only for unrecoverable errors
+When invoking the Orchestrator, provide:
+1. **Requirements source** — file path or inline description
+2. **Scope** — which modules/files to analyze
+3. **Context** — project background, key files, dependencies
 
-## Entry Point
+## Output Format
 
-```python
-# main.py
-orc = Orchestrator(
-    analyst=AnalystAgent(model="ollama/qwen2.5-coder:7b"),
-    risk_analyst=RiskAnalystAgent(model="ollama/qwen2.5-coder:7b"),
-    test_designer=TestDesignerAgent(model="ollama/qwen2.5-coder:7b"),
-    test_coder=TestCoderAgent(model="ollama/qwen2.5-coder:7b"),
-    feature_implementer=FeatureImplementerAgent(model="ollama/qwen2.5-coder:7b"),
-    test_executor=TestExecutorAgent(),       # no LLM — runs pytest directly
-    reporter=ReporterAgent(backend="local"), # or backend="polarion"
-    state_dir=Path(".pipeline_state"),
-    max_retries=3,
-)
+The Orchestrator produces at each phase:
 
-state = orc.run(scope="hi-tech/")
-# or
-state = orc.run(scope="hi-tech/", resume_from=Path(".pipeline_state/run-xyz.json"))
-```
+1. **QA Plan** — structured task list with dependencies and gate location
+2. **Agent invocations** — calls to delegate to specialized agents
+3. **Gate package** — review bundle for the human (see above)
+4. **Progress log** — status of each phase after gate approval
+5. **Final summary** — after Test Reporter completes
 
-## Output
-
-`orchestrator.run()` always returns the final `PipelineState`. Inspect
-`state.phase` to determine outcome.
-
-```python
-if state.phase == Phase.DONE:
-    print(f"Report: {state.get_artifact(ArtifactKey.REPORT_PATH)}")
-else:
-    # Phase.FAILED — human intervention required
-    print(state.summary())
-```
-
-`state.summary()` prints:
+## Example Invocation
 
 ```
-Run:     run-1774813299
-Scope:   hi-tech/
-Phase:   FAILED
-Retries: 3/3
-Artifacts produced: ['codebase_snapshot', 'requirements', 'risk_register']
-Pending feedback:   0
-Errors logged:      4
---- Errors ---
-  [RISK] Model returned malformed JSON on attempt 1
-  [RISK] Model returned malformed JSON on attempt 2
-  [FATAL] Phase RISK exceeded 3 retries.
+Agent: Orchestrator
+Task: Run full QA analysis on news bot project
+Input:
+  - Requirements: requirements.md
+  - Scope: news.py, content.py, config.py
+  - Context: RSS-based Twitter bot, Python 3.12, pytest suite in test_bot.py
 ```
 
-## Implementation Reference
+## Example QA Plan Output
 
-- `pipeline_state.py` — `PipelineState`, `Phase`, `ArtifactKey`, `FeedbackEvent`
-- `orchestrator.py` — `Orchestrator`, `Agent` protocol, `FEEDBACK_ROUTING`
-- `test_pipeline.py` — 29 tests covering all behaviours above
+```markdown
+## QA Plan — news bot
 
-**Why:** The Orchestrator earns its existence by hiding genuinely complex state
-machine logic. Agents stay simple and stateless. The pipeline is resumable,
-debuggable, and testable with mocks at every seam.
+Phase 1: Risk Analysis
+  → Risk Analyst: analyze news.py, content.py, config.py
+  → Output: Risk Register + Edge Cases
+
+Phase 2: Test Design
+  → Test Designer: design TCs for all identified risks
+  → Output: TC specs + Polarion work item blocks
+
+Phase 3: ⚠ HUMAN GATE
+  → Present review package
+  → Await: APPROVED / REJECTED / PARTIAL
+
+Phase 4: Test Coding       [blocked until gate passes]
+  → Test Coder: write pytest functions for approved TCs
+  → Output: test_bot.py additions
+
+Phase 5: Test Execution    [blocked until gate passes]
+  → Test Executor: run pytest locally, produce junit-xml
+  → Output: test_results.xml, coverage report
+
+Phase 6: Test Reporting    [blocked until gate passes]
+  → Test Reporter: map results → TCs, produce test run document
+  → Output: test_run_TR-YYYY-NNN.md
+```
+
+## Delegation Pattern
+
+| Agent | Invoked When | Passes Output To |
+|-------|-------------|-----------------|
+| Risk Analyst | Phase 1 | Test Designer |
+| Test Designer | Phase 2 | Human Gate package |
+| Test Coder | After gate approval | Test Executor |
+| Test Executor | After Test Coder | Test Reporter |
+| Test Reporter | After Test Executor | Final summary |
+
+## How to Apply
+
+1. User requests QA work
+2. Invoke Orchestrator with requirements + scope
+3. Orchestrator creates plan and runs Phase 1 and 2 sequentially
+4. Orchestrator presents gate package and **waits**
+5. Human approves/rejects/partial-approves
+6. On approval: invoke Test Coder → Test Executor → Test Reporter
+7. Orchestrator produces final summary with all phase outputs
+
+**Why:** The human gate ensures risks and test cases are validated before any code is written or work items created. This prevents wasted effort on misdirected tests and keeps humans in control of what enters Polarion. Phases 1–2 are cheap to re-run; Phases 4–6 are not.
