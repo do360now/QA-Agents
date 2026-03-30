@@ -36,53 +36,97 @@ Do not proceed until create and link syntax is confirmed from the docs.
 
 ---
 
-## Step 2 — Check for Existing WIs (Duplicate Guard)
+## Step 2 — Similarity and Duplicate Check
 
-Before creating anything, check whether WIs already exist for this requirement:
+This is a two-part check. The Requirement Analyst already searched for similar
+items during analysis — this step verifies those findings are still current
+(Polarion state may have changed) and catches anything missed.
+
+### Part A — Load Requirement Analyst findings
+
+The review document from Requirement Analyst contains an "Existing Coverage"
+section. Extract from it:
+- **Exact-match risks** → do not create new Risk WIs; load their existing IDs
+- **Exact-match TCs** → do not create new TC WIs; load their existing WI IDs into the mapping and link to the new requirement instead
+- **Partial-match items** → note the overlap; new WIs will still be created
+
+### Part B — Safety-net search in Polarion
+
+Even if Requirement Analyst found nothing, search directly before writing.
+This catches items created between the analysis and now.
+
+**Search by linked requirement (catches exact duplicates for this requirement):**
 
 ```bash
 # PLACEHOLDER — replace with actual syntax from POLARION_TOOLS.md
 python polarion_cli.py search \
   --project <PROJECT_ID> \
-  --linked-requirement <POLARION_ID> \
-  --type TestCase
+  --type Risk \
+  --linked-requirement <POLARION_ID>
+
+python polarion_cli.py search \
+  --project <PROJECT_ID> \
+  --type TestCase \
+  --linked-requirement <POLARION_ID>
 ```
 
-If existing TCs are found:
-- Report them in the pre-flight summary
-- Load their IDs into the mapping (skip creation for duplicates)
-- Only create WIs for TCs that do not yet exist
+**Search by title keywords (catches similar items from other requirements):**
+
+```bash
+# Run for each key term from the requirement title and description
+python polarion_cli.py search \
+  --project <PROJECT_ID> \
+  --type Risk \
+  --keyword "<keyword>"
+
+python polarion_cli.py search \
+  --project <PROJECT_ID> \
+  --type TestCase \
+  --keyword "<keyword>"
+```
+
+### Part C — Reconcile and decide
+
+For each proposed new risk or TC, determine its creation status:
+
+| Status | Condition | Action |
+|--------|-----------|--------|
+| **CREATE** | No similar item found | Create new WI |
+| **LINK** | Exact-match TC exists → just link to new requirement | Skip creation; add link; load existing WI ID into mapping |
+| **REUSE** | Exact-match Risk exists | Skip creation; reference existing Risk WI when linking TCs |
+| **CREATE + NOTE** | Partial match found | Create new WI; add a note in its description referencing the related existing WI |
+| **SKIP (dup)** | WI already linked to this exact requirement | Skip creation; load existing ID |
 
 ---
 
 ## Step 3 — Pre-flight Confirmation
 
-Before creating anything, state exactly what will be created:
+Before creating anything, state exactly what will be created, linked, or skipped:
 
 ```markdown
 ## Polarion Writer — Pre-flight
 
 **Requirement:** [POLARION_ID]
 
-### Risk Work Items to Create (N)
-| Local ID | Title | Severity |
-|----------|-------|----------|
-| R1 | [title] | High |
-| S1 | [title] | Critical |
+### Risk Work Items
+| Local ID | Title | Severity | Action | Reason |
+|----------|-------|----------|--------|--------|
+| R1 | [title] | High | CREATE | No similar item found |
+| S1 | [title] | Critical | REUSE WI-3201 | Exact match — existing risk covers this |
 
-### Test Case Work Items to Create (N)
-| TC ID | Title | Linked Risk |
-|-------|-------|-------------|
-| TC-R1-001 | [title] | R1 |
-| TC-R1-002 | [title] | R1 |
-| TC-S1-001 | [title] | S1 |
+### Test Case Work Items
+| TC ID | Title | Action | Reason |
+|-------|-------|--------|--------|
+| TC-R1-001 | [title] | CREATE | No similar item found |
+| TC-R1-002 | [title] | CREATE + NOTE WI-3195 | Partial match — new TC needed, will reference WI-3195 |
+| TC-S1-001 | [title] | LINK WI-3210 | Exact match — will link existing TC to this requirement |
 
-### Skipped (already exist)
-| TC ID | Existing WI ID |
-|-------|---------------|
-| — | — |
+### Summary
+- WIs to create: N
+- Existing WIs to link: N
+- Existing WIs reused (no action): N
 
-Proceed? Reply `YES` to create, or list specific IDs to skip.
+Proceed? Reply `YES` to execute, or list specific IDs to override.
 ```
 
 **MODE_A:** Wait for `YES` before writing.
@@ -201,20 +245,20 @@ with open("test_results/tc_wi_mapping.csv", "w") as f:
 **Created:** YYYY-MM-DD HH:MM UTC
 
 ### Risk Work Items
-| Local ID | Polarion WI ID | Title | Severity |
-|----------|---------------|-------|----------|
-| R1 | WI-4519 | [title] | High |
-| S1 | WI-4520 | [title] | Critical |
+| Local ID | Polarion WI ID | Title | Severity | Action taken |
+|----------|---------------|-------|----------|-------------|
+| R1 | WI-4519 | [title] | High | CREATED |
+| S1 | WI-3201 | [title] | Critical | REUSED (existing) |
 
 ### Test Case Work Items
-| TC ID | Polarion WI ID | Title | Linked Risk WI |
-|-------|---------------|-------|----------------|
-| TC-R1-001 | WI-4521 | [title] | WI-4519 |
-| TC-R1-002 | WI-4522 | [title] | WI-4519 |
-| TC-S1-001 | WI-4523 | [title] | WI-4520 |
+| TC ID | Polarion WI ID | Title | Linked Risk WI | Action taken |
+|-------|---------------|-------|----------------|-------------|
+| TC-R1-001 | WI-4521 | [title] | WI-4519 | CREATED |
+| TC-R1-002 | WI-4522 | [title] | WI-4519 | CREATED (refs WI-3195) |
+| TC-S1-001 | WI-3210 | [title] | WI-3201 | LINKED to requirement |
 
 ### Mapping File
-Saved: test_results/tc_wi_mapping.csv (N entries)
+Saved: test_results/tc_wi_mapping.csv (N entries — includes linked and created)
 
 ### Failures
 | Item | Error |
@@ -228,16 +272,18 @@ and TC specs as a guide. Call Test Coder if tests are not supplied.
 Next step (MODE_B): Orchestrator invokes Feature Coder automatically.
 ```
 
+
 ---
 
 ## Error Handling
 
 | Situation | Action |
 |-----------|--------|
-| Requirement fetch fails at Step 2 | Stop — report error, create nothing |
+| Similarity search fails (Step 2) | Log the failure, proceed with CREATE for all items, note in summary that similarity check was skipped |
+| Requirement fetch fails | Stop — report error, create nothing |
 | Single WI creation fails | Log failure, continue with remaining, report at end |
 | Link creation fails | Log it — the WI exists, report for manual linking |
-| Duplicate WI detected | Skip creation, load existing ID into mapping |
+| Duplicate WI detected after pre-flight | Skip creation, load existing ID into mapping, flag in summary |
 | Mapping file write fails | Stop and report — downstream agents cannot function without it |
 
 Never silently ignore a failure. Every error must appear in the creation summary.
@@ -247,11 +293,14 @@ Never silently ignore a failure. Every error must appear in the creation summary
 ## How to Apply
 
 1. Read tool documentation (`POLARION_TOOLS.md`)
-2. Check for existing WIs (duplicate guard)
-3. Present pre-flight summary — wait for `YES` (MODE_A) or proceed (MODE_B)
-4. Create risk WIs one by one, recording each returned WI ID
-5. Create TC WIs one by one, linking to requirement and risk WIs
-6. Write `test_results/tc_wi_mapping.csv`
-7. Output creation summary
+2. Load Requirement Analyst "Existing Coverage" findings (Part A)
+3. Run safety-net searches by requirement link and keyword (Part B)
+4. Reconcile: assign CREATE / LINK / REUSE / CREATE+NOTE / SKIP to each item (Part C)
+5. Present pre-flight summary with actions — wait for `YES` (MODE_A) or proceed (MODE_B)
+6. Create new Risk WIs, recording each returned WI ID
+7. Create new TC WIs, linking to requirement and risk WIs; add notes for partial matches
+8. Execute LINK actions — link existing TC WIs to the new requirement
+9. Write `test_results/tc_wi_mapping.csv` — include all TCs regardless of action taken
+10. Output creation summary with action taken per item
 
 **Why the mapping file matters:** The Test Run Creator has no other reliable way to know which Polarion WI ID corresponds to which pytest test. Passing this information through a file rather than relying on human copy-paste eliminates a whole class of manual errors, especially when there are 10+ TCs across multiple risks.

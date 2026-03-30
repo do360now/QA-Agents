@@ -76,7 +76,89 @@ requirement text. Fix the tool invocation or check the ID before retrying.
 
 ---
 
-## Step 3 — Analyse for Risks
+## Step 3 — Search for Existing Similar Work Items
+
+Before designing any new risks or test cases, search Polarion for items that
+may already cover the same ground. This prevents proposing duplicates and
+surfaces existing coverage the human may want to reuse or reference.
+
+### 3a — Search for existing Risks
+
+Extract 3–5 keywords from the requirement title and description. Search for
+existing Risk work items using each keyword:
+
+```bash
+# PLACEHOLDER — replace with actual syntax from POLARION_TOOLS.md
+python polarion_cli.py search \
+  --project <PROJECT_ID> \
+  --type Risk \
+  --keyword "<keyword>"
+```
+
+Repeat for each keyword. Collect all results, de-duplicate by WI ID.
+
+### 3b — Search for existing Test Cases
+
+Search for existing Test Case work items using the same keywords:
+
+```bash
+# PLACEHOLDER — replace with actual syntax from POLARION_TOOLS.md
+python polarion_cli.py search \
+  --project <PROJECT_ID> \
+  --type TestCase \
+  --keyword "<keyword>"
+```
+
+Also search by the module or component the requirement touches, if identifiable:
+
+```bash
+python polarion_cli.py search \
+  --project <PROJECT_ID> \
+  --type TestCase \
+  --keyword "<module_name>"
+```
+
+### 3c — Assess similarity
+
+For each result returned, assess whether it is genuinely similar to what this
+requirement needs. Use this classification:
+
+| Classification | Meaning | Action in review doc |
+|----------------|---------|----------------------|
+| **Exact match** | Covers the same scenario completely | Do not propose a new risk/TC — reference existing WI |
+| **Partial match** | Overlaps but does not fully cover the scenario | Propose new item, note the overlap and the gap |
+| **Tangential** | Same area but different scenario | Propose new item, mention related WI for context |
+| **No match** | Unrelated | No mention needed |
+
+### 3d — Record findings
+
+Capture findings for inclusion in the review document output:
+
+```markdown
+## Existing Coverage Found
+
+### Similar Risks
+| Existing WI ID | Title | Classification | Recommendation |
+|---------------|-------|----------------|----------------|
+| WI-3201 | Path traversal in file loader | Exact match | Reuse — do not create new risk |
+| WI-3187 | Input validation missing in API | Partial match | New risk R1 needed — covers DB layer not in WI-3201 |
+
+### Similar Test Cases
+| Existing WI ID | Title | Classification | Recommendation |
+|---------------|-------|----------------|----------------|
+| WI-3210 | TC: Path traversal blocked in loader | Exact match | Link to this requirement — do not create new TC |
+| WI-3195 | TC: Null input to API raises error | Partial match | New TC needed — covers different input path |
+
+### No existing coverage found for
+- [Risk area or TC scenario with no match — will be proposed as new]
+```
+
+If no similar items are found at all, note that explicitly:
+`No existing risks or test cases found matching this requirement's scope.`
+
+---
+
+## Step 4 — Analyse for Risks
 
 Apply the following framework to the full requirement text:
 
@@ -120,7 +202,7 @@ Apply the following framework to the full requirement text:
 
 ---
 
-## Step 4 — Design Test Cases
+## Step 5 — Design Test Cases
 
 For each risk, design 1–3 test cases. Each TC produces two output blocks.
 
@@ -218,6 +300,34 @@ NNN is zero-padded and sequential per risk ID.
 
 ---
 
+## Risk Register
+
+| ID | Description | Severity | Category | Likelihood | Suggested Mitigation |
+|----|-------------|----------|----------|------------|---------------------|
+| R1 | ...         | High     | Logic    | Medium     | ...                 |
+| S1 | ...         | Critical | Security | Low        | ...                 |
+
+> Risks marked ♻ are new items. Risks marked 🔗 reference an existing Polarion WI.
+
+---
+
+## Existing Coverage
+
+### Similar Risks Found
+| Existing WI ID | Title | Classification | Recommendation |
+|---------------|-------|----------------|----------------|
+| WI-XXXX | [title] | [Exact / Partial / Tangential] | [Reuse / New needed / Reference only] |
+
+### Similar Test Cases Found
+| Existing WI ID | Title | Classification | Recommendation |
+|---------------|-------|----------------|----------------|
+| WI-XXXX | [title] | [Exact / Partial / Tangential] | [Link to req / New needed / Reference only] |
+
+### No existing coverage for
+- [areas where new risks/TCs will be proposed]
+
+---
+
 ## Edge Cases Identified
 
 ### R1: [Risk title]
@@ -242,7 +352,11 @@ NNN is zero-padded and sequential per risk ID.
 |--------|-------|
 | Requirement | [POLARION_ID] |
 | Risks identified | N |
+| — New risks proposed | N |
+| — Existing risks reused | N |
 | Total TCs | N |
+| — New TCs proposed | N |
+| — Existing TCs to link | N |
 | Critical | N |
 | High | N |
 | Medium | N |
@@ -269,10 +383,13 @@ Review the risks and test cases above.
 1. Run one-time setup if `POLARION_TOOLS.md` does not exist
 2. Read tool documentation
 3. Fetch requirement by Polarion ID — stop if fetch fails
-4. Analyse requirement text using the risk framework
-5. For each risk, design 1–3 TCs, producing both output blocks per TC
-6. Write the full review document
-7. In MODE_A: present to human and wait for gate response
-8. In MODE_B: pass document to Orchestrator, which proceeds to Polarion Writer
+4. Extract keywords from requirement; search Polarion for similar existing risks and TCs
+5. Classify each match (exact / partial / tangential) and record findings
+6. Analyse requirement text for new risks — skip any area already covered by an exact match
+7. For each new risk, design 1–3 TCs — skip any scenario already covered by an exact match TC
+8. For exact-match existing items, include them in the review doc as reuse recommendations (not new proposals)
+9. Write the full review document including the Existing Coverage section
+10. In MODE_A: present to human and wait for gate response
+11. In MODE_B: pass document to Orchestrator, which proceeds to Polarion Writer
 
 **Why this agent is read-only:** Analysis and creation are different risk profiles. A wrong analysis costs a document revision. A wrong Polarion write costs cleanup time and creates traceability debt. Keeping them separate ensures nothing is created until the analysis is sound.
