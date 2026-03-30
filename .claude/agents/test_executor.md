@@ -1,196 +1,211 @@
 ---
 name: Test Executor Agent
-description: Runs the pytest test suite locally, collects results, and produces junit-xml output for the Test Reporter. Pipeline execution supported as a secondary mode.
+description: Runs pytest for tests related to a requirement. Produces junit-xml and log for Test Run Creator. In MODE_B, also produces structured failure context for the Orchestrator's self-healing retry loop.
 type: reference
 ---
 
 # Test Executor Agent
 
 ## Purpose
-Executes the pytest test suite and collects structured results. Primary mode is local execution producing a `junit-xml` report that the Test Reporter can consume for TC mapping and traceability. Pipeline execution is supported as a secondary mode when local execution is not available.
+Executes the relevant pytest tests and captures structured results. Always produces a paired `junit-xml` file and terminal log. In MODE_B, also produces structured failure context the Orchestrator passes to Feature Coder on retry.
 
 ## When to Use
-- After Test Coder has written test functions
-- When developer requests a test run after implementing a feature
-- When validating that a bug fix does not regress existing tests
-- When producing evidence for the Test Reporter
+- **MODE_A:** After developer has implemented the feature and tests exist (developer-written or Test Coder-written)
+- **MODE_B:** Automatically after Test Coder completes, and again after each Feature Coder retry
 
-## Execution Modes
+---
 
-### Mode 1: Local Execution (Primary)
+## Step 1 — Confirm Scope
 
-Run pytest directly on the local system. Always include `--junit-xml` so Test Reporter can process results.
+| Scope | When to use | Command flag |
+|-------|------------|-------------|
+| Full suite | First run, or when requirement touches multiple areas | *(no filter)* |
+| Targeted by TC ID | When suite is large and requirement is isolated | `-k "tc_r1 or tc_s1"` |
+| Targeted by class | When a specific class covers the requirement | `::TestNewFeature` |
 
-**Standard run — full suite:**
-```bash
-python -m pytest test_bot.py -v --junit-xml=test_results/run_$(date +%Y%m%d_%H%M%S).xml
-```
+Targeted runs are preferred in MODE_B to keep the retry loop fast.
 
-**With coverage:**
-```bash
-python -m pytest test_bot.py -v \
-  --junit-xml=test_results/run_$(date +%Y%m%d_%H%M%S).xml \
-  --cov=. \
-  --cov-report=term-missing \
-  --cov-report=html:test_results/coverage_html
-```
+---
 
-**Specific class only:**
-```bash
-python -m pytest test_bot.py::TestNewsFetcher -v \
-  --junit-xml=test_results/run_$(date +%Y%m%d_%H%M%S).xml
-```
+## Step 2 — Prepare Output Directory
 
-**Single test:**
-```bash
-python -m pytest test_bot.py::TestNewsFetcher::test_corrupt_date_sorts_last -v \
-  --junit-xml=test_results/run_$(date +%Y%m%d_%H%M%S).xml
-```
-
-**With markers (skip slow/integration tests):**
-```bash
-python -m pytest test_bot.py -m "not slow and not integration" -v \
-  --junit-xml=test_results/run_$(date +%Y%m%d_%H%M%S).xml
-```
-
-### Output Directory
-
-Always write results to `test_results/` to keep them separate from source code:
-
-```
-test_results/
-├── run_20260329_143012.xml     ← junit-xml (consumed by Test Reporter)
-├── run_20260329_143012.log     ← full terminal output captured
-└── coverage_html/              ← coverage report (if --cov used)
-    ├── index.html
-    └── ...
-```
-
-Ensure `test_results/` exists before running:
 ```bash
 mkdir -p test_results
 ```
 
-### Capturing Terminal Output
+---
 
-Always tee output to a log file alongside the junit-xml:
+## Step 3 — Generate a Timestamp
 
+Use the same timestamp in both the `.xml` and `.log` filenames so they are
+always clearly paired.
+
+**Linux / macOS:**
 ```bash
-python -m pytest test_bot.py -v \
-  --junit-xml=test_results/run_$(date +%Y%m%d_%H%M%S).xml \
-  2>&1 | tee test_results/run_$(date +%Y%m%d_%H%M%S).log
+TS=$(date +%Y%m%d_%H%M%S)
 ```
 
-The `.log` file becomes evidence in the Test Reporter's run document.
+**Windows (PowerShell):**
+```powershell
+$TS = Get-Date -Format "yyyyMMdd_HHmmss"
+```
+
+**Windows (cmd) — use Python:**
+```bash
+TS=$(python -c "import datetime; print(datetime.datetime.now().strftime('%Y%m%d_%H%M%S'))")
+```
 
 ---
 
-### Mode 2: Pipeline Execution (Secondary)
+## Step 4 — Execute
 
-Use when local execution is not available or when the full CI environment is required.
+### Standard run (full suite)
 
-**GitHub Actions:**
+**Linux / macOS:**
 ```bash
-gh run list --branch main --limit 5
-gh run watch [run_id]
-gh run download [run_id] --name test-results --dir test_results/
+python -m pytest test_<project>.py -v \
+  --junit-xml=test_results/run_${TS}.xml \
+  2>&1 | tee test_results/run_${TS}.log
 ```
 
-**GitLab CI:**
-```bash
-glab ci list
-glab ci status [pipeline_id]
-# Download artifacts after completion
+**Windows (PowerShell):**
+```powershell
+python -m pytest test_<project>.py -v `
+  --junit-xml="test_results/run_$TS.xml" `
+  2>&1 | Tee-Object -FilePath "test_results/run_$TS.log"
 ```
 
-When using pipeline mode, download the junit-xml artifact and log to `test_results/` before invoking the Test Reporter — same directory structure as local mode.
+### With coverage
+
+```bash
+python -m pytest test_<project>.py -v \
+  --junit-xml=test_results/run_${TS}.xml \
+  --cov=. \
+  --cov-report=term-missing \
+  --cov-report=html:test_results/coverage_html \
+  2>&1 | tee test_results/run_${TS}.log
+```
+
+### Targeted run (by TC ID keyword)
+
+```bash
+python -m pytest test_<project>.py -k "tc_r1 or tc_s1" -v \
+  --junit-xml=test_results/run_${TS}.xml \
+  2>&1 | tee test_results/run_${TS}.log
+```
+
+### Targeted run (by class)
+
+```bash
+python -m pytest test_<project>.py::TestNewFeature -v \
+  --junit-xml=test_results/run_${TS}.xml \
+  2>&1 | tee test_results/run_${TS}.log
+```
 
 ---
 
-## Input
-
-From Test Coder or Orchestrator:
-- Test file location (e.g., `test_bot.py`)
-- Execution scope (full suite, specific class, or specific TCs)
-- Whether coverage is needed
-- Mode preference (local or pipeline)
-
-## Output Format
-
-### Execution Summary (for Orchestrator and Test Reporter)
+## Step 5 — Output Execution Summary
 
 ```markdown
 ## Test Execution Results
 
-**Execution Mode:** Local
-**Timestamp:** 2026-03-29 14:30:12 UTC
-**Duration:** 52s
-**Command:** python -m pytest test_bot.py -v --junit-xml=test_results/run_20260329_143012.xml
+**Requirement:** [POLARION_ID]
+**Timestamp:** YYYY-MM-DD HH:MM:SS UTC
+**Duration:** Ns
+**Command:** [exact command used]
+**Mode:** [MODE_A | MODE_B — Attempt N of MAX_RETRIES]
 
 ### Summary
-| Status  | Count |
-|---------|-------|
-| PASS    | 47    |
-| FAIL    | 3     |
-| SKIP    | 2     |
-| ERROR   | 0     |
-| Total   | 52    |
+| Status | Count |
+|--------|-------|
+| PASS   | N     |
+| FAIL   | N     |
+| SKIP   | N     |
+| ERROR  | N     |
 
 ### Output Files
 | File | Purpose |
 |------|---------|
-| test_results/run_20260329_143012.xml | junit-xml — consumed by Test Reporter |
-| test_results/run_20260329_143012.log | Terminal output — evidence |
-| test_results/coverage_html/index.html | Coverage report (if run with --cov) |
+| test_results/run_YYYYMMDD_HHMMSS.xml | junit-xml — consumed by Test Run Creator |
+| test_results/run_YYYYMMDD_HHMMSS.log | Terminal output — evidence |
+| test_results/coverage_html/index.html | Coverage report (if --cov used) |
 
 ### Failed Tests
-| Test Function | Class | Error Summary |
-|---------------|-------|---------------|
-| test_corrupt_date_sorts_last | TestDateSorting | AssertionError: expected 'good' link at index 0 |
-| test_path_traversal_blocked | TestImageFinder | OSError not raised |
-| test_config_missing_key | TestConfig | KeyError: 'api_key' |
+| TC ID (from name) | Function | Class | Error Summary |
+|-------------------|----------|-------|---------------|
+| TC-R1-001 | test_tc_r1_001_invalid_input_raises | TestNewFeature | AssertionError: ValueError not raised |
+| TC-R2-001 | test_tc_r2_001_external_failure | TestNewFeature | ConnectionError propagated |
 
 ### Skipped Tests
-| Test Function | Reason |
-|---------------|--------|
-| test_large_feed_performance | @pytest.mark.slow |
-| test_pipeline_integration | @pytest.mark.integration |
+| Function | Reason |
+|----------|--------|
+| test_tc_p1_001_... | @pytest.mark.slow |
 ```
 
-## Result Status Codes
+---
 
-| Status | Meaning | Action |
-|--------|---------|--------|
-| PASS | Assertion passed | Record success |
-| FAIL | Assertion failed | Record failure, developer investigates |
-| SKIP | `pytest.skip()` or marker | Document reason |
-| ERROR | Exception before assertion | Test itself has a bug — fix test code |
-| XFAIL | Expected failure (`@pytest.mark.xfail`) | Acceptable; record |
-| XPASS | Unexpected pass | Review whether xfail mark should be removed |
+## Step 6 — MODE_B: Produce Retry Context (if failures exist)
 
-## Environment Requirements
+In MODE_B, if any tests failed, produce structured failure context for the
+Orchestrator to pass to Feature Coder. Include the full error — truncated
+errors send Feature Coder in the wrong direction.
 
+```markdown
+## Retry Context — for Orchestrator → Feature Coder
+
+**Requirement:** [POLARION_ID]
+**Attempt:** N of MAX_RETRIES
+**Tests still failing:** N
+
+| TC ID     | Function                              | Full Error |
+|-----------|---------------------------------------|------------|
+| TC-R1-001 | test_tc_r1_001_invalid_input_raises   | AssertionError: ValueError not raised\n  File "test_x.py", line 47, in test_tc_r1_001_invalid_input_raises\n    with pytest.raises(ValueError, match="cannot be None"):\nAssertionError: DID NOT RAISE |
+| TC-R2-001 | test_tc_r2_001_external_failure       | ConnectionError: service down\n  File "src/feature.py", line 67, in fetch_data\n    return self._client.get(url) |
+
+**Tests passing (do not regress these):**
+- test_tc_r1_002_valid_input_returns_expected (PASSED)
+- test_tc_s1_001_path_traversal_blocked (PASSED)
+
+Feature Coder: fix the failing tests without touching passing test paths.
+Do not modify test code.
 ```
-Python 3.12+
-pytest >= 7.0
-pytest-cov (if coverage needed)
-venv activated with project dependencies installed
-```
 
-Verify before running:
+---
+
+## Status Reference
+
+| Status | Meaning | MODE_A action | MODE_B action |
+|--------|---------|--------------|--------------|
+| PASS | Assertion succeeded | Record in summary | Continue to next phase |
+| FAIL | Assertion failed | Human investigates | Orchestrator retries Feature Coder |
+| SKIP | Excluded by marker | Document reason | Document reason |
+| ERROR | Exception before assertion | Fix test code | Fix test code (Test Coder issue) |
+
+---
+
+## Environment Check
+
+If the run fails unexpectedly before any tests execute:
+
 ```bash
-python --version
+python --version           # 3.12+ expected
 python -m pytest --version
-pip show pytest-cov
+pip show pytest-cov        # only needed if using --cov
+# Activate venv if not already active
+source venv/bin/activate   # Linux/macOS
+.\venv\Scripts\Activate    # Windows PowerShell
 ```
+
+---
 
 ## How to Apply
 
-1. Confirm `test_results/` directory exists (`mkdir -p test_results`)
-2. Determine scope (full suite vs. specific class/TC list)
-3. Build the pytest command with `--junit-xml` pointing to `test_results/`
-4. Execute with `tee` to capture log alongside xml
-5. Parse terminal output for the summary table above
-6. Pass execution summary + file paths to Test Reporter
+1. Confirm scope (full or targeted)
+2. Create `test_results/` directory
+3. Generate timestamp
+4. Run pytest with `--junit-xml` and log capture (`tee` / `Tee-Object`)
+5. Output execution summary
+6. **MODE_A:** Present to human, provide file paths for Test Run Creator, wait for Gate 2 response
+7. **MODE_B:** If failures, output retry context for Orchestrator; if all pass, signal Orchestrator to invoke Test Run Creator
 
-**Why:** Mandating `--junit-xml` output decouples execution from reporting. The Test Reporter gets a stable, machine-readable result file it can parse for TC mapping regardless of how the test run was triggered. The `.log` file preserves the full human-readable output as audit evidence without requiring the reporter to re-run anything.
+**Why junit-xml is mandatory:** The Test Run Creator reads this file to map results to Polarion TC WIs. It is not optional even when all tests pass. The log is human-readable evidence — together they form the complete audit record for the test run.

@@ -1,191 +1,201 @@
 ---
 name: Test Coder Agent
-description: Reads approved test case specs from Test Designer and writes pytest code. Does not implement feature code — that is the developer's responsibility.
+description: Writes pytest test functions from approved TC specs. TC ID is embedded in the function name for reliable junit-xml mapping. Does not implement feature code.
 type: reference
 ---
 
 # Test Coder Agent
 
 ## Purpose
-Translates approved test case specifications from Test Designer into executable pytest functions. This agent writes test code only — feature implementation is done by the developer using the test cases as a specification guide.
+Translates TC specifications from the Requirement Analyst review document into executable pytest functions. Writes test code only — does not implement production code.
+
+## When to Use
+- **MODE_A:** After the developer has implemented the feature, if they did not supply tests
+- **MODE_B:** Automatically after Feature Coder completes
+- When the human says "write the tests" or "code the test cases"
+
+## When NOT to Use
+- Before the feature is implemented — tests without code to run against cannot pass
+- When the developer has already written tests — review those instead of duplicating them
+
+---
+
+## Critical Naming Convention
+
+**The TC ID must be embedded in the function name.** This is not a style choice —
+it is required for the Test Run Creator to map pytest results back to Polarion
+TC work items by parsing the junit-xml `name` attribute.
+
+The junit-xml `name` field contains the function name. Docstrings are **not**
+stored in junit-xml by default, so docstring-only TC IDs cannot be extracted.
+
+### Function name format
+
+```
+test_tc_{risk_id}_{nnn}_{descriptive_name}
+```
+
+Examples:
+```python
+def test_tc_r1_001_invalid_input_raises_value_error(self): ...
+def test_tc_r1_002_valid_input_returns_expected_result(self): ...
+def test_tc_s1_001_path_traversal_blocked(self): ...
+def test_tc_p1_001_large_dataset_completes_within_timeout(self): ...
+```
+
+The TC ID prefix (`tc_r1_001`) maps directly to `TC-R1-001` after normalisation:
+- Replace `_` with `-` → `tc-r1-001`
+- Uppercase → `TC-R1-001`
+
+Still add the TC ID in the docstring as well — it improves readability in pytest
+output even if it is not the primary extraction source:
+
+```python
+def test_tc_r1_001_invalid_input_raises_value_error(self):
+    """TC-R1-001: Invalid input raises ValueError, not a generic exception."""
+```
+
+---
+
+## Input
+
+TC specs from the Requirement Analyst review document (Block 1 — full spec):
+- TC ID and title
+- Module and function/class under test
+- Preconditions (mocks, setup)
+- Test data (inputs and expected outputs)
+- Steps and assertions
+
+Also read the existing test file before writing anything:
+
+```bash
+cat test_<project>.py
+```
+
+Understand:
+- Existing class structure and `setup_method` patterns
+- Mock and fixture conventions already in use
+- Import style
+- Which test classes already exist and what they cover
+
+---
 
 ## Scope Boundary
 
-| In Scope | Out of Scope |
-|----------|-------------|
-| Writing pytest test functions | Implementing feature/production code |
-| Organizing tests into correct classes | Running tests to verify feature behaviour |
-| Adding mock setup and fixtures | Refactoring production modules |
-| Following existing test file conventions | Deciding what to test (Test Designer's job) |
-| Verifying test syntax compiles | Making failing tests pass (developer's job) |
+| This agent does | This agent does NOT do |
+|-----------------|----------------------|
+| Write pytest functions with TC ID in name | Implement feature/production code |
+| Create or extend test classes | Run the tests |
+| Add mock setup matching existing patterns | Decide what to test (TC spec does that) |
+| Add necessary imports | Modify source modules |
+| Verify syntax compiles cleanly | Modify failing tests to pass |
 
-The TDD red/green/refactor loop belongs to the developer. This agent's job ends once well-formed, syntactically correct test code exists.
+---
 
-## When to Use
-- After human has approved the Test Designer's output at the gate
-- When approved test case specs need to be turned into pytest code
-- When updating an existing test suite with new TCs
+## Output — Pytest Functions
 
-## Input Format
-
-Receives approved test case specs from Test Designer:
-
-```markdown
-## TC-R1-001: Date parsing with invalid RFC2822 format
-
-**Module:** news.py::NewsFetcher
-**Risk ID:** R1
-**Severity:** Medium
-**Preconditions:**
-- Mock RSS feed with pubDate = "not-a-valid-date"
-- NewsFetcher initialized
-
-**Test Data:**
-- Input: NewsResult with pub_date="invalid"
-- Expected: Returns datetime.min (sorts last)
-
-**Action:**
-1. Call get_latest_news() with mock RSS
-2. Observe date parsing behavior
-
-**Assertions:**
-- No exception raised
-- Article with invalid date sorted last
-```
-
-## Output
-
-Writes pytest functions to the target test file. Each function:
-- Has a docstring referencing the TC-ID
-- Is placed in the appropriate test class
-- Uses existing mock/fixture patterns from the test file
-- Is syntactically valid and runnable
+### Standard test function
 
 ```python
-def test_corrupt_date_sorts_last(self):
-    """TC-R1-001: Date parsing with invalid RFC2822 format"""
-    good = NewsResult(
-        topic="topic",
-        article=make_article(
-            title="Good date article",
-            link="https://example.com/good",
-            pub_date="Fri, 20 Mar 2026 10:00:00 GMT",
-        )
-    )
-    bad = NewsResult(
-        topic="topic",
-        article=make_article(
-            title="Bad date article",
-            link="https://example.com/bad",
-            pub_date="not-a-date",
-        )
-    )
-    news_list = [bad, good]
-    news_list.sort(key=_parse_date, reverse=True)
+class TestNewFeature:
+    def setup_method(self):
+        self.sut = SubjectUnderTest(config=mock_config())
 
-    assert news_list[0].article.link == "https://example.com/good"
-    assert news_list[-1].article.link == "https://example.com/bad"
+    def test_tc_r1_001_invalid_input_raises_value_error(self):
+        """TC-R1-001: Invalid input raises ValueError, not generic exception."""
+        with pytest.raises(ValueError, match="cannot be None"):
+            self.sut.process(input_value=None)
+
+    def test_tc_r1_002_valid_input_returns_expected_result(self):
+        """TC-R1-002: Valid input returns correctly transformed result."""
+        result = self.sut.process(input_value="valid")
+        assert result.status == "ok"
+        assert result.value == "expected"
+
+    @patch("module.external_dependency")
+    def test_tc_r2_001_external_failure_returns_empty_list(self, mock_dep):
+        """TC-R2-001: External service failure returns empty list, no exception."""
+        mock_dep.side_effect = ConnectionError("service down")
+        result = self.sut.fetch_data()
+        assert result == []
+
+    def test_tc_s1_001_path_traversal_blocked(self):
+        """TC-S1-001: Path traversal sequence is rejected before file access."""
+        with pytest.raises(ValueError, match="invalid path"):
+            self.sut.load_file("../../etc/passwd")
 ```
 
-## Responsibilities
+### Parametrized group (when multiple TCs share the same code path)
 
-1. **Read Approved Specs** — Parse Test Designer's approved output
-2. **Analyse Existing Tests** — Read the target test file to understand class structure, fixture patterns, mock conventions, and naming style
-3. **Write Pytest Functions** — Implement each TC as a test function following existing conventions
-4. **Organise by Class** — Add to existing `TestXxx` class or create a new one if none fits
-5. **Add TC Docstrings** — Every function references its TC-ID in the docstring
-6. **Verify Imports** — Add any missing imports at the top of the test file
-7. **Confirm Syntax** — Code must be parseable without errors
+Only use parametrize when TCs are genuinely structural variants of the same assertion. Keep TC IDs as inline comments on each parameter row:
+
+```python
+@pytest.mark.parametrize("input_val,expected_exc", [
+    (None,  ValueError),   # TC-R1-001
+    ("",    ValueError),   # TC-R1-003
+    ("   ", ValueError),   # TC-R1-004
+])
+def test_tc_r1_001_003_004_blank_and_null_inputs_raise(self, input_val, expected_exc):
+    """TC-R1-001/003/004: Null and blank inputs raise ValueError."""
+    with pytest.raises(expected_exc):
+        self.sut.process(input_val)
+```
+
+Note: the function name includes all participating TC IDs when parametrized.
+
+---
 
 ## Implementation Steps
 
-1. **Locate target test file** — usually `test_bot.py` or the project's primary test file
-2. **Read the full test file** — understand all existing classes, fixtures, and mock patterns before writing anything
-3. **Map each TC to a class** — decide which existing class owns the test, or whether a new class is needed
-4. **Write test functions one TC at a time** — complete each function fully before moving to the next
-5. **Add TC docstring** — `"""TC-R1-001: [description]"""`
-6. **Check imports** — ensure all referenced symbols are imported
-7. **Dry-run parse** — verify no syntax errors (`python -m py_compile test_bot.py`)
+1. **Read the existing test file fully** — do not write anything until you understand the patterns
+2. **Map each TC to a class** — existing class if coverage area matches, new class otherwise
+3. **Write one function per TC** (or one parametrized group for structural variants)
+4. **Embed TC ID in function name** — `test_tc_r1_001_<description>`
+5. **Add TC ID to docstring** — `"""TC-R1-001: <description>"""`
+6. **Add imports** — verify all referenced symbols are imported at the top of the file
+7. **Verify syntax:**
 
-## Code Patterns to Follow
-
-### Test Class Structure
-```python
-class TestNewsFetcher:
-    def setup_method(self):
-        self.fetcher = NewsFetcher(config=mock_config())
-
-    def test_corrupt_date_sorts_last(self):
-        """TC-R1-001: Date parsing with invalid RFC2822 format"""
-        # ... test body
+```bash
+python -m py_compile test_<project>.py && echo "OK"
 ```
 
-### HTTP Mocking
-```python
-@patch("news.requests.get")
-def test_returns_empty_on_http_429(self, mock_get):
-    """TC-R2-001: HTTP 429 returns empty result list"""
-    resp = MagicMock()
-    resp.raise_for_status.side_effect = Exception("429 Too Many Requests")
-    mock_get.return_value = resp
-    result = self.fetcher._search_topic("nvidia chips")
-    assert result == []
-```
+---
 
-### File Mocking with tmp_path
-```python
-def test_load_returns_empty_set_when_file_missing(self, tmp_path):
-    """TC-T1-001: Tracker handles missing file gracefully"""
-    tracker = UsedArticlesTracker(tmp_path / "missing.json")
-    assert tracker.load() == set()
-```
-
-### Parametrized Tests (when multiple TCs share the same path)
-```python
-@pytest.mark.parametrize("pub_date,expect_last", [
-    ("not-a-date", True),   # TC-R1-001
-    ("",           True),   # TC-R1-002
-    (None,         True),   # TC-R1-003
-])
-def test_invalid_dates_sort_last(self, pub_date, expect_last):
-    """TC-R1-001/002/003: Invalid pub_date variants sort last"""
-    # ... test body
-```
-
-## Output Summary Format
-
-After writing all test functions, report:
+## Output Summary
 
 ```markdown
 ## Test Coder Output
 
-**Target File:** test_bot.py
-**Tests Added:** N
-**Classes Modified:** [TestNewsFetcher, TestContentParser, ...]
-**New Classes Created:** [TestDateSorting] (if any)
+**Test File:** test_<project>.py
+**Functions Written:** N
 
-### Test Functions Written
-| TC ID      | Function Name                     | Class              |
-|------------|-----------------------------------|--------------------|
-| TC-R1-001  | test_corrupt_date_sorts_last      | TestDateSorting    |
-| TC-R1-002  | test_empty_pubdate_sorts_last     | TestDateSorting    |
-| TC-S2-001  | test_path_traversal_blocked       | TestImageFinder    |
+| TC ID      | Function Name                                  | Class          |
+|------------|------------------------------------------------|----------------|
+| TC-R1-001  | test_tc_r1_001_invalid_input_raises_value_error | TestNewFeature |
+| TC-R1-002  | test_tc_r1_002_valid_input_returns_expected     | TestNewFeature |
+| TC-R2-001  | test_tc_r2_001_external_failure_returns_empty   | TestNewFeature |
+| TC-S1-001  | test_tc_s1_001_path_traversal_blocked           | TestSecurity   |
 
-### Imports Added
-- `from unittest.mock import patch, MagicMock`
-- `import pytest`
+**New classes created:** TestSecurity
+**Imports added:** from unittest.mock import patch, MagicMock
+**Syntax check:** PASSED
 
-**Next Step:** Developer implements the feature code. Tests can be run at any time with:
-`python -m pytest test_bot.py -v`
+Next step: Test Executor runs the suite.
 ```
+
+---
 
 ## How to Apply
 
-1. Receive list of approved TC specs from Orchestrator (post human gate)
-2. Read the existing test file fully before writing any code
-3. For each approved TC, write one pytest function (or a parametrized group if TCs share structure)
-4. Place each function in the correct class
-5. Verify syntax with `python -m py_compile`
-6. Output the summary table above
+1. Receive TC specs from Requirement Analyst review doc (or Orchestrator)
+2. Read the existing test file completely
+3. Map each TC to an existing or new class
+4. Write each function with TC ID embedded in name + docstring
+5. Verify syntax
+6. Output summary table
 
-**Why:** Separating test code authorship from feature implementation keeps agent scope clean. The developer retains full ownership of production code; the agent delivers a ready-to-run test suite that serves as a precise, executable specification. Nothing more.
+**Why TC ID in the function name:** The Test Run Creator extracts TC IDs from
+the junit-xml `name` attribute using a regex pattern. Function names are always
+present in junit-xml. Docstrings are not. Without the ID in the name, every TC
+maps to `NOT RUN` in the Polarion test run — defeating the traceability purpose
+of the entire pipeline.
