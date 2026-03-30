@@ -9,6 +9,15 @@ QA-Agents is a multi-agent pipeline for automated quality assurance. It uses a s
 ## Commands
 
 ```bash
+# Run the pipeline
+python3 main.py --scope ./my-project --model llama3
+
+# With verbose logging
+python3 main.py --scope ./my-project -v
+
+# Resume from previous state
+python3 main.py --scope ./my-project --resume-from .pipeline_state/run-123.json
+
 # Run tests
 pytest test_pipeline.py
 
@@ -33,7 +42,7 @@ The orchestrator runs through ordered phases:
 4. **TEST_CODE** — Test Coder writes pytest code
 5. **FEATURE_CODE** — Feature Implementer makes tests pass (TDD)
 6. **EXECUTION** — Test Executor runs the suite
-7. **REPORTING** — Reporter generates markdown + Polarion output
+7. **REPORTING** — Reporter generates markdown report
 
 ### Central State Object
 
@@ -56,14 +65,22 @@ The orchestrator runs through ordered phases:
 
 ### Agent Interface
 
-All agents implement the `Agent` protocol:
+All agents inherit from `BaseAgent` (`agents/base.py`) and implement:
 ```python
-class Agent(Protocol):
-    name: str
-    def run(self, state: PipelineState) -> None: ...
+def _execute(self, state: PipelineState) -> None:
+    """Override in subclasses to implement agent logic."""
 ```
 
 Agents are injected at Orchestrator construction time (dependency injection), enabling testability with mocks.
+
+### LLM Client
+
+`llm_client.py` provides a unified LLM client supporting:
+- `OllamaClient` — local models (default)
+- `AnthropicClient` — Claude API
+- `OpenAIClient` — OpenAI API
+
+Factory function: `create_llm_client(provider, model, api_key, base_url)`
 
 ### Artifact Keys
 
@@ -76,13 +93,24 @@ Each phase produces specific artifacts identified by `ArtifactKey` enum:
 - `EXECUTION_REPORT` (EXECUTION)
 - `REPORT_PATH` (REPORTING)
 
-## Agent Definitions
+## Agent Implementations
 
-Each agent has a markdown specification in `agents/`:
-- `analyst.md` — Codebase analysis and requirements derivation
-- `risk_analyst.md` — Risk identification and classification
-- `test_designer.md` — Test case specification
-- `test_coder.md` — Pytest code generation
-- `feature_implementer.md` — TDD feature implementation
-- `test_executor.md` — Test suite execution
-- `reporter.md` — Report generation
+| Agent | File | Description |
+|-------|------|-------------|
+| Analyst | `agents/analyst.py` | Codebase analysis and requirements derivation |
+| RiskAnalyst | `agents/risk_analyst.py` | Risk identification and classification |
+| TestDesigner | `agents/test_designer.py` | Test case specification |
+| TestCoder | `agents/test_coder.py` | Pytest code generation |
+| FeatureImplementer | `agents/feature_implementer.py` | TDD feature implementation |
+| TestExecutor | `agents/test_executor.py` | Test suite execution |
+| Reporter | `agents/reporter.py` | Report generation |
+
+## Prompt Templates
+
+System prompts are stored in `prompts/*.txt` and can be loaded via `load_prompt(name)` from `agents/base.py`.
+
+## Output Directories
+
+- `.pipeline_state/` — Persisted pipeline state
+- `reports/` — Generated QA reports
+- `tests/` — Generated test files

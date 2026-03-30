@@ -1,0 +1,1076 @@
+{
+  "run_id": "run-1774882889",
+  "scope": ".",
+  "phase": "TEST_CODE",
+  "retry_count": 0,
+  "max_retries": 3,
+  "errors": [],
+  "started_at": 1774882889.5337052,
+  "updated_at": 1774883243.1296165,
+  "artifacts": {
+    "codebase_snapshot": {
+      "files": [
+        {
+          "path": "agents/__init__.py",
+          "classes": [],
+          "functions": [],
+          "imports": [
+            "analyst",
+            "base",
+            "feature_implementer",
+            "reporter",
+            "risk_analyst",
+            "test_coder",
+            "test_designer",
+            "test_executor"
+          ],
+          "external_calls": [],
+          "config_deps": [],
+          "has_tests": false,
+          "line_count": 20,
+          "todos": []
+        },
+        {
+          "path": "agents/analyst.py",
+          "classes": [
+            "AnalystAgent"
+          ],
+          "functions": [
+            "_execute",
+            "_build_snapshot",
+            "_fallback_snapshot",
+            "_derive_requirements"
+          ],
+          "imports": [
+            "json",
+            "re",
+            "pathlib",
+            "base",
+            "pipeline_state"
+          ],
+          "external_calls": [],
+          "config_deps": [],
+          "has_tests": false,
+          "line_count": 150,
+          "todos": []
+        },
+        {
+          "path": "agents/base.py",
+          "classes": [
+            "BaseAgent"
+          ],
+          "functions": [
+            "load_prompt",
+            "run",
+            "_execute",
+            "call_llm",
+            "call_llm_json",
+            "read_file",
+            "read_files_in_dir",
+            "truncate_for_llm",
+            "log_summary"
+          ],
+          "imports": [
+            "logging",
+            "re",
+            "abc",
+            "pathlib",
+            "typing",
+            "llm_client",
+            "pipeline_state"
+          ],
+          "external_calls": [],
+          "config_deps": [],
+          "has_tests": false,
+          "line_count": 150,
+          "todos": []
+        },
+        {
+          "path": "agents/feature_implementer.py",
+          "classes": [
+            "FeatureImplementerAgent"
+          ],
+          "functions": [
+            "_execute",
+            "_run_tests",
+            "_implement_fixes"
+          ],
+          "imports": [
+            "json",
+            "subprocess",
+            "pathlib",
+            "base",
+            "pipeline_state"
+          ],
+          "external_calls": [
+            "subprocess.run",
+            "pytest"
+          ],
+          "config_deps": [],
+          "has_tests": false,
+          "line_count": 80,
+          "todos": []
+        },
+        {
+          "path": "agents/reporter.py",
+          "classes": [
+            "ReporterAgent"
+          ],
+          "functions": [
+            "_execute",
+            "_generate_report"
+          ],
+          "imports": [
+            "datetime",
+            "pathlib",
+            "base",
+            "pipeline_state"
+          ],
+          "external_calls": [],
+          "config_deps": [],
+          "has_tests": false,
+          "line_count": 80,
+          "todos": []
+        },
+        {
+          "path": "agents/risk_analyst.py",
+          "classes": [
+            "RiskAnalystAgent"
+          ],
+          "functions": [
+            "_execute",
+            "_analyze_risks"
+          ],
+          "imports": [
+            "json",
+            "base",
+            "pipeline_state"
+          ],
+          "external_calls": [],
+          "config_deps": [],
+          "has_tests": false,
+          "line_count": 60,
+          "todos": []
+        },
+        {
+          "path": "agents/test_coder.py",
+          "classes": [
+            "TestCoderAgent"
+          ],
+          "functions": [
+            "_execute",
+            "_write_tests"
+          ],
+          "imports": [
+            "json",
+            "pathlib",
+            "base",
+            "pipeline_state"
+          ],
+          "external_calls": [],
+          "config_deps": [],
+          "has_tests": false,
+          "line_count": 60,
+          "todos": []
+        },
+        {
+          "path": "agents/test_designer.py",
+          "classes": [
+            "TestDesignerAgent"
+          ],
+          "functions": [
+            "_execute",
+            "_design_tests"
+          ],
+          "imports": [
+            "json",
+            "base",
+            "pipeline_state"
+          ],
+          "external_calls": [],
+          "config_deps": [],
+          "has_tests": false,
+          "line_count": 60,
+          "todos": []
+        },
+        {
+          "path": "agents/test_executor.py",
+          "classes": [
+            "TestExecutorAgent"
+          ],
+          "functions": [
+            "_execute",
+            "_run_tests",
+            "_parse_json_report",
+            "_parse_text_output",
+            "_classify_failure"
+          ],
+          "imports": [
+            "json",
+            "subprocess",
+            "pathlib",
+            "base",
+            "pipeline_state"
+          ],
+          "external_calls": [
+            "subprocess.run",
+            "pytest"
+          ],
+          "config_deps": [],
+          "has_tests": false,
+          "line_count": 100,
+          "todos": []
+        },
+        {
+          "path": "llm_client.py",
+          "classes": [
+            "LLMClientBase",
+            "OllamaClient",
+            "AnthropicClient",
+            "OpenAIClient"
+          ],
+          "functions": [
+            "complete",
+            "_get_api_key",
+            "create_llm_client",
+            "parse_json_response"
+          ],
+          "imports": [
+            "json",
+            "logging",
+            "abc",
+            "typing",
+            "requests"
+          ],
+          "external_calls": [
+            "requests.post"
+          ],
+          "config_deps": [
+            "ANTHROPIC_API_KEY",
+            "OPENAI_API_KEY"
+          ],
+          "has_tests": false,
+          "line_count": 200,
+          "todos": []
+        },
+        {
+          "path": "main.py",
+          "classes": [],
+          "functions": [
+            "parse_args",
+            "main"
+          ],
+          "imports": [
+            "argparse",
+            "logging",
+            "pathlib",
+            "orchestrator",
+            "pipeline_state",
+            "agents"
+          ],
+          "external_calls": [],
+          "config_deps": [],
+          "has_tests": false,
+          "line_count": 80,
+          "todos": []
+        },
+        {
+          "path": "orchestrator.py",
+          "classes": [
+            "Orchestrator"
+          ],
+          "functions": [
+            "run",
+            "_initialise",
+            "_run_current_phase",
+            "_handle_agent_exception",
+            "_route_feedback",
+            "_advance_to_next",
+            "_next_phase",
+            "_persist"
+          ],
+          "imports": [
+            "logging",
+            "pathlib",
+            "typing",
+            "pipeline_state"
+          ],
+          "external_calls": [],
+          "config_deps": [],
+          "has_tests": false,
+          "line_count": 250,
+          "todos": []
+        },
+        {
+          "path": "pipeline_state.py",
+          "classes": [
+            "Phase",
+            "ArtifactKey",
+            "Risk",
+            "QATestSpec",
+            "ExecutionResult",
+            "FeedbackEvent",
+            "PipelineState"
+          ],
+          "functions": [
+            "set_artifact",
+            "get_artifact",
+            "has_artifact",
+            "advance",
+            "mark_failed",
+            "record_error",
+            "increment_retry",
+            "add_feedback",
+            "consume_feedback",
+            "save",
+            "load"
+          ],
+          "imports": [
+            "json",
+            "time",
+            "dataclasses",
+            "enum",
+            "pathlib",
+            "typing"
+          ],
+          "external_calls": [],
+          "config_deps": [],
+          "has_tests": false,
+          "line_count": 200,
+          "todos": []
+        },
+        {
+          "path": "test_pipeline.py",
+          "classes": [
+            "TestArtifactAPI",
+            "TestPhaseTransitions",
+            "TestRetryPolicy",
+            "TestFeedbackAPI",
+            "TestPersistence",
+            "TestOrchestratorHappyPath",
+            "TestOrchestratorRetry"
+          ],
+          "functions": [
+            "fresh_state",
+            "mock_agent",
+            "all_mock_agents",
+            "orchestrator",
+            "test_set_and_get_artifact",
+            "test_get_missing_artifact_raises_key_error",
+            "test_has_artifact_returns_false_when_absent",
+            "test_has_artifact_returns_true_after_set",
+            "test_set_artifact_updates_timestamp",
+            "test_advance_forward_is_allowed",
+            "test_advance_resets_retry_count",
+            "test_rewind_without_feedback_raises",
+            "test_rewind_with_matching_feedback_is_allowed",
+            "test_mark_failed_sets_terminal_phase",
+            "test_mark_failed_appends_to_errors",
+            "test_increment_retry_returns_true_within_budget",
+            "test_increment_retry_returns_false_when_exceeded",
+            "test_record_error_is_non_fatal",
+            "test_add_and_consume_feedback",
+            "test_consume_leaves_other_types_intact",
+            "test_consume_nonexistent_type_returns_empty",
+            "test_save_creates_json_file",
+            "test_load_restores_phase",
+            "test_load_restores_artifacts",
+            "test_load_restores_feedback",
+            "test_save_load_roundtrip_preserves_run_id",
+            "test_run_completes_all_phases",
+            "test_all_agents_called_once",
+            "test_state_persisted_after_each_phase",
+            "test_agent_exception_triggers_retry"
+          ],
+          "imports": [
+            "json",
+            "time",
+            "pathlib",
+            "unittest.mock",
+            "pytest",
+            "pipeline_state",
+            "orchestrator"
+          ],
+          "external_calls": [],
+          "config_deps": [],
+          "has_tests": true,
+          "line_count": 200,
+          "todos": []
+        }
+      ],
+      "dependency_inventory": [
+        "json",
+        "re",
+        "pathlib",
+        "logging",
+        "abc",
+        "typing",
+        "requests",
+        "argparse",
+        "subprocess",
+        "datetime",
+        "dataclasses",
+        "enum",
+        "unittest.mock",
+        "pytest",
+        "time"
+      ],
+      "uncovered_modules": [
+        "agents/__init__.py",
+        "main.py"
+      ]
+    },
+    "requirements": [
+      {
+        "id": "REQ-001",
+        "type": "explicit",
+        "text": "System must analyze codebases and build structural snapshots including classes, functions, imports, external calls, and config dependencies",
+        "source": "analyst.md:ANALYSIS Phase",
+        "modules": [
+          "agents/analyst.py"
+        ]
+      },
+      {
+        "id": "REQ-002",
+        "type": "explicit",
+        "text": "System must derive requirements from three sources: explicit (docs/comments), inferred (code patterns), and gap (undefined behavior)",
+        "source": "analyst.md:Derive Requirements",
+        "modules": [
+          "agents/analyst.py"
+        ]
+      },
+      {
+        "id": "REQ-003",
+        "type": "explicit",
+        "text": "System must identify risks including bugs, security issues (OWASP Top 10), and coverage gaps and classify them",
+        "source": "CLAUDE.md:Pipeline Phases",
+        "modules": [
+          "agents/risk_analyst.py"
+        ]
+      },
+      {
+        "id": "REQ-004",
+        "type": "explicit",
+        "text": "System must create test case specifications (QATestSpec) that define test inputs, expected outputs, and assertions",
+        "source": "CLAUDE.md:Artifact Keys",
+        "modules": [
+          "agents/test_designer.py",
+          "pipeline_state.py"
+        ]
+      },
+      {
+        "id": "REQ-005",
+        "type": "explicit",
+        "text": "System must generate pytest-compatible test code from test specifications and write to test files",
+        "source": "CLAUDE.md:TEST_CODE Phase",
+        "modules": [
+          "agents/test_coder.py"
+        ]
+      },
+      {
+        "id": "REQ-006",
+        "type": "explicit",
+        "text": "System must implement features using TDD approach - making tests pass by implementing necessary code",
+        "source": "CLAUDE.md:FEATURE_CODE Phase",
+        "modules": [
+          "agents/feature_implementer.py"
+        ]
+      },
+      {
+        "id": "REQ-007",
+        "type": "explicit",
+        "text": "System must execute test suites using pytest and parse execution results including pass/fail status and error messages",
+        "source": "CLAUDE.md:EXECUTION Phase",
+        "modules": [
+          "agents/test_executor.py",
+          "pipeline_state.py"
+        ]
+      },
+      {
+        "id": "REQ-008",
+        "type": "explicit",
+        "text": "System must generate markdown QA reports summarizing analysis, risks, test results, and coverage",
+        "source": "CLAUDE.md:REPORTING Phase",
+        "modules": [
+          "agents/reporter.py"
+        ]
+      },
+      {
+        "id": "REQ-009",
+        "type": "explicit",
+        "text": "System must support multiple LLM providers including Ollama (local), Anthropic (Claude), and OpenAI via unified client interface",
+        "source": "CLAUDE.md:LLM Client",
+        "modules": [
+          "llm_client.py"
+        ]
+      },
+      {
+        "id": "REQ-010",
+        "type": "explicit",
+        "text": "System must persist pipeline state after each phase to enable resumability from interrupted runs",
+        "source": "CLAUDE.md:Orchestrator Pattern",
+        "modules": [
+          "orchestrator.py",
+          "pipeline_state.py"
+        ]
+      },
+      {
+        "id": "REQ-011",
+        "type": "explicit",
+        "text": "System must implement retry policy (default 3 retries per phase) for agent failures with exponential backoff",
+        "source": "CLAUDE.md:Orchestrator Pattern",
+        "modules": [
+          "orchestrator.py"
+        ]
+      },
+      {
+        "id": "REQ-012",
+        "type": "explicit",
+        "text": "System must route feedback from test failures to appropriate earlier phases based on failure classification (test_bug, feature_bug, new_risk)",
+        "source": "CLAUDE.md:Orchestrator Pattern",
+        "modules": [
+          "orchestrator.py"
+        ]
+      },
+      {
+        "id": "REQ-013",
+        "type": "inferred",
+        "text": "LLM client must handle JSON parsing errors gracefully and retry on malformed responses",
+        "source": "analyst.md:Error Handling",
+        "modules": [
+          "llm_client.py"
+        ]
+      },
+      {
+        "id": "REQ-014",
+        "type": "inferred",
+        "text": "Pipeline state must handle artifact serialization/deserialization for nested dataclass structures",
+        "source": "improvements.md:Deep Artifact Serialization",
+        "modules": [
+          "pipeline_state.py"
+        ]
+      },
+      {
+        "id": "REQ-015",
+        "type": "inferred",
+        "text": "System must filter analysis to relevant files (Python source) while excluding noise (pycache, git, venv, binaries)",
+        "source": "analyst.md:What It Reads",
+        "modules": [
+          "agents/analyst.py"
+        ]
+      },
+      {
+        "id": "REQ-016",
+        "type": "gap",
+        "text": "Analyst agent must handle large files (>500 lines) by summarizing signatures rather than full content to avoid LLM context overflow",
+        "source": "analyst.md:Implementation Notes",
+        "modules": [
+          "agents/analyst.py"
+        ]
+      },
+      {
+        "id": "REQ-017",
+        "type": "gap",
+        "text": "Pipeline must log warnings for unrecognized feedback types rather than silently continuing",
+        "source": "improvements.md:Add Unknown Feedback Type Warning",
+        "modules": [
+          "orchestrator.py"
+        ]
+      }
+    ],
+    "risk_register": [
+      {
+        "id": "R1",
+        "description": "Analyst agent does not implement large file handling (>500 lines) as required by REQ-016. The base.py provides truncate_for_llm but analyst.py does not use it, risking LLM context overflow on large codebases.",
+        "severity": "High",
+        "likelihood": "Medium",
+        "module": "agents/analyst.py",
+        "category": "Bugs"
+      },
+      {
+        "id": "R2",
+        "description": "Pipeline state save/load may fail on nested dataclass artifacts (REQ-014). The current implementation uses json.dumps without custom encoder for nested structures like Risk, QATestSpec, ExecutionResult.",
+        "severity": "High",
+        "likelihood": "Medium",
+        "module": "pipeline_state.py",
+        "category": "Bugs"
+      },
+      {
+        "id": "S1",
+        "description": "Command injection risk in feature_implementer.py and test_executor.py. External file paths from pipeline artifacts are passed to subprocess.run without sanitization, allowing arbitrary command execution if artifact data is compromised.",
+        "severity": "Critical",
+        "likelihood": "Low",
+        "module": "agents/feature_implementer.py",
+        "category": "Security"
+      },
+      {
+        "id": "S2",
+        "description": "API key exposure risk. llm_client.py retrieves keys via _get_api_key using os.environ but has no validation or secure retrieval. Keys logged in plain text if logging level set to DEBUG.",
+        "severity": "High",
+        "likelihood": "Medium",
+        "module": "llm_client.py",
+        "category": "Security"
+      },
+      {
+        "id": "P1",
+        "description": "Analyst agent lacks file filtering (REQ-015). The _build_snapshot reads all files without excluding pycache, git, venv, or binaries, causing unnecessary processing and potential performance degradation on large repositories.",
+        "severity": "Medium",
+        "likelihood": "High",
+        "module": "agents/analyst.py",
+        "category": "Performance"
+      },
+      {
+        "id": "M1",
+        "description": "Unrecognized feedback types silently continue (REQ-017 gap). The orchestrator.py _route_feedback does not log warnings for unknown feedback types, making debugging feedback routing failures difficult.",
+        "severity": "Low",
+        "likelihood": "Medium",
+        "module": "orchestrator.py",
+        "category": "Maintainability"
+      },
+      {
+        "id": "T1",
+        "description": "Critical test coverage gap - 11 of 13 Python modules have no tests. Untested: agents/analyst.py, agents/base.py, agents/feature_implementer.py, agents/reporter.py, agents/risk_analyst.py, agents/test_coder.py, agents/test_designer.py, agents/test_executor.py, llm_client.py, main.py, orchestrator.py. Only pipeline_state.py and test_pipeline.py have coverage.",
+        "severity": "Critical",
+        "likelihood": "High",
+        "module": "Multiple",
+        "category": "TestGap"
+      }
+    ],
+    "test_suite_manifest": [
+      {
+        "id": "TC-R1-001",
+        "name": "test_large_file_truncation_in_analyst",
+        "risk_id": "R1",
+        "severity": "High",
+        "module": "agents/analyst.py",
+        "preconditions": [
+          "base.py provides truncate_for_llm function",
+          "analyst.py module imported"
+        ],
+        "actions": [
+          "Create a test file with 600+ lines of code",
+          "Call analyst's method that processes file content",
+          "Verify truncate_for_llm is invoked for files over 500 lines"
+        ],
+        "assertions": [
+          "Content is truncated to limit defined in REQ-016",
+          "LLM context does not overflow",
+          "Original file remains unmodified"
+        ],
+        "postconditions": [
+          "Clean up test file"
+        ]
+      },
+      {
+        "id": "TC-R1-002",
+        "name": "test_analyst_handles_multifile_project",
+        "risk_id": "R1",
+        "severity": "High",
+        "module": "agents/analyst.py",
+        "preconditions": [
+          "Create project with multiple large files (>500 lines each)",
+          "Mock LLM context limit"
+        ],
+        "actions": [
+          "Run analyst on project with large files",
+          "Verify each large file is individually truncated"
+        ],
+        "assertions": [
+          "All files over 500 lines are truncated",
+          "Total content fits within LLM context limit"
+        ],
+        "postconditions": [
+          "Remove test project directory"
+        ]
+      },
+      {
+        "id": "TC-R2-001",
+        "name": "test_nested_dataclass_serialization",
+        "risk_id": "R2",
+        "severity": "High",
+        "module": "pipeline_state.py",
+        "preconditions": [
+          "pipeline_state.py imported",
+          "Risk, QATestSpec, ExecutionResult dataclasses defined"
+        ],
+        "actions": [
+          "Create nested dataclass instance (Risk contains QATestSpec, QATestSpec contains ExecutionResult)",
+          "Call pipeline state save method",
+          "Call pipeline state load method"
+        ],
+        "assertions": [
+          "No serialization errors thrown",
+          "Deserialized object matches original (all nested fields preserved)"
+        ],
+        "postconditions": [
+          "Clean up saved state file"
+        ]
+      },
+      {
+        "id": "TC-R2-002",
+        "name": "test_pipeline_state_with_complex_artifacts",
+        "risk_id": "R2",
+        "severity": "High",
+        "module": "pipeline_state.py",
+        "preconditions": [
+          "Create pipeline with multiple nested artifact types"
+        ],
+        "actions": [
+          "Save pipeline state with complex nested artifacts",
+          "Load pipeline state from saved file",
+          "Verify all artifact types restored correctly"
+        ],
+        "assertions": [
+          "Risk dataclass fully restored",
+          "QATestSpec dataclass fully restored",
+          "ExecutionResult dataclass fully restored"
+        ],
+        "postconditions": [
+          "Remove temporary state files"
+        ]
+      },
+      {
+        "id": "TC-S1-001",
+        "name": "test_feature_implementer_path_sanitization",
+        "risk_id": "S1",
+        "severity": "Critical",
+        "module": "agents/feature_implementer.py",
+        "preconditions": [
+          "feature_implementer.py imported",
+          "subprocess.run mocked to capture calls"
+        ],
+        "actions": [
+          "Pass malicious path (e.g., '; rm -rf /') as artifact file path",
+          "Call feature implementer method that uses subprocess.run"
+        ],
+        "assertions": [
+          "Path is sanitized before passing to subprocess",
+          "No shell=True parameter used without sanitization",
+          "Command injection characters are escaped or rejected"
+        ],
+        "postconditions": [
+          "Reset subprocess mock"
+        ]
+      },
+      {
+        "id": "TC-S1-002",
+        "name": "test_test_executor_path_sanitization",
+        "risk_id": "S1",
+        "severity": "Critical",
+        "module": "agents/test_executor.py",
+        "preconditions": [
+          "test_executor.py imported",
+          "subprocess.run mocked"
+        ],
+        "actions": [
+          "Pass artifact path containing command injection payload",
+          "Execute test executor method"
+        ],
+        "assertions": [
+          "Path is validated/sanitized",
+          "subprocess receives safe arguments only"
+        ],
+        "postconditions": [
+          "Reset subprocess mock"
+        ]
+      },
+      {
+        "id": "TC-S1-003",
+        "name": "test_path_validation_rejects_special_characters",
+        "risk_id": "S1",
+        "severity": "Critical",
+        "module": "agents/feature_implementer.py",
+        "preconditions": [
+          "Path validation function available in module"
+        ],
+        "actions": [
+          "Test paths with: $(), &&, ||, ;, |, >, <, backticks, newlines"
+        ],
+        "assertions": [
+          "All dangerous characters cause validation failure",
+          "Safe paths pass validation"
+        ],
+        "postconditions": []
+      },
+      {
+        "id": "TC-S2-001",
+        "name": "test_api_key_not_logged_at_debug_level",
+        "risk_id": "S2",
+        "severity": "High",
+        "module": "llm_client.py",
+        "preconditions": [
+          "llm_client.py imported",
+          "Set logging level to DEBUG",
+          "Capture log output"
+        ],
+        "actions": [
+          "Call _get_api_key method",
+          "Inspect captured DEBUG logs"
+        ],
+        "assertions": [
+          "No API key value appears in any log message",
+          "Only key name/identifier logged if anything"
+        ],
+        "postconditions": [
+          "Reset logging level"
+        ]
+      },
+      {
+        "id": "TC-S2-002",
+        "name": "test_api_key_secure_retrieval",
+        "risk_id": "S2",
+        "severity": "High",
+        "module": "llm_client.py",
+        "preconditions": [
+          "Mock os.environ to simulate environment",
+          "Set valid API key in environment"
+        ],
+        "actions": [
+          "Call _get_api_key for valid provider",
+          "Call _get_api_key for missing key scenario"
+        ],
+        "assertions": [
+          "Valid key returned successfully",
+          "Appropriate error/None for missing key",
+          "No key exposed in error messages"
+        ],
+        "postconditions": [
+          "Clear mocked environment"
+        ]
+      },
+      {
+        "id": "TC-S2-003",
+        "name": "test_api_key_validation_exists",
+        "risk_id": "S2",
+        "severity": "High",
+        "module": "llm_client.py",
+        "preconditions": [],
+        "actions": [
+          "Test with invalid key format",
+          "Test with empty key",
+          "Test with valid key format"
+        ],
+        "assertions": [
+          "Invalid formats are rejected with clear error",
+          "Empty keys trigger validation failure"
+        ],
+        "postconditions": []
+      },
+      {
+        "id": "TC-P1-001",
+        "name": "test_build_snapshot_excludes_pycache",
+        "risk_id": "P1",
+        "severity": "Medium",
+        "module": "agents/analyst.py",
+        "preconditions": [
+          "Create test directory with __pycache__ folder and .py files"
+        ],
+        "actions": [
+          "Call _build_snapshot on test directory",
+          "Check which files are included in snapshot"
+        ],
+        "assertions": [
+          "No __pycache__ files in snapshot",
+          "All .py files included"
+        ],
+        "postconditions": [
+          "Clean up test directory"
+        ]
+      },
+      {
+        "id": "TC-P1-002",
+        "name": "test_build_snapshot_excludes_git_venv",
+        "risk_id": "P1",
+        "severity": "Medium",
+        "module": "agents/analyst.py",
+        "preconditions": [
+          "Create test directory with .git, venv, node_modules, binary.exe"
+        ],
+        "actions": [
+          "Call _build_snapshot on test directory"
+        ],
+        "assertions": [
+          ".git directory excluded",
+          "venv folder excluded",
+          "node_modules excluded",
+          "Binary files excluded"
+        ],
+        "postconditions": [
+          "Clean up test directory"
+        ]
+      },
+      {
+        "id": "TC-P1-003",
+        "name": "test_build_snapshot_performance_large_repo",
+        "risk_id": "P1",
+        "severity": "Medium",
+        "module": "agents/analyst.py",
+        "preconditions": [
+          "Create repository with 1000+ files including excluded types",
+          "Measure baseline processing time"
+        ],
+        "actions": [
+          "Run _build_snapshot with filtering enabled",
+          "Measure processing time"
+        ],
+        "assertions": [
+          "Processing time significantly reduced vs unfiltered",
+          "Only relevant files processed"
+        ],
+        "postconditions": [
+          "Clean up test repository"
+        ]
+      },
+      {
+        "id": "TC-M1-001",
+        "name": "test_unrecognized_feedback_logs_warning",
+        "risk_id": "M1",
+        "severity": "Low",
+        "module": "orchestrator.py",
+        "preconditions": [
+          "orchestrator.py imported",
+          "Capture warning logs"
+        ],
+        "actions": [
+          "Send unknown feedback type to _route_feedback",
+          "Verify warning is logged"
+        ],
+        "assertions": [
+          "WARNING level log emitted for unknown type",
+          "Log message identifies unknown feedback type"
+        ],
+        "postconditions": [
+          "Reset logging"
+        ]
+      },
+      {
+        "id": "TC-M1-002",
+        "name": "test_feedback_routing_coverage",
+        "risk_id": "M1",
+        "severity": "Low",
+        "module": "orchestrator.py",
+        "preconditions": [
+          "Define all known feedback types from REQ-017"
+        ],
+        "actions": [
+          "Test each known type routes correctly",
+          "Test each unknown type logs warning"
+        ],
+        "assertions": [
+          "All known types route without warning",
+          "All unknown types produce warning"
+        ],
+        "postconditions": []
+      },
+      {
+        "id": "TC-T1-001",
+        "name": "test_analyst_agent_core_functionality",
+        "risk_id": "T1",
+        "severity": "Critical",
+        "module": "agents/analyst.py",
+        "preconditions": [
+          "analyst.py module importable"
+        ],
+        "actions": [
+          "Test analyze_code method with sample codebase",
+          "Test _build_snapshot with mixed files",
+          "Test large file handling"
+        ],
+        "assertions": [
+          "Returns valid analysis result",
+          "Snapshot excludes filtered types",
+          "Large files handled correctly"
+        ],
+        "postconditions": []
+      },
+      {
+        "id": "TC-T1-002",
+        "name": "test_base_agent_class",
+        "risk_id": "T1",
+        "severity": "Critical",
+        "module": "agents/base.py",
+        "preconditions": [
+          "base.py module importable"
+        ],
+        "actions": [
+          "Test truncate_for_llm function",
+          "Test base agent initialization",
+          "Test common agent methods"
+        ],
+        "assertions": [
+          "Truncation works correctly for various sizes",
+          "Base class initializes properly",
+          "Inherited methods work correctly"
+        ],
+        "postconditions": []
+      },
+      {
+        "id": "TC-T1-003",
+        "name": "test_feature_implementer_basic_operation",
+        "risk_id": "T1",
+        "severity": "Critical",
+        "module": "agents/feature_implementer.py",
+        "preconditions": [
+          "feature_implementer.py importable",
+          "Mock file system"
+        ],
+        "actions": [
+          "Test feature implementation with valid spec",
+          "Test path handling with various inputs"
+        ],
+        "assertions": [
+          "Implementation completes without error",
+          "Path sanitization applied",
+          "Output files created correctly"
+        ],
+        "postconditions": [
+          "Clean up generated files"
+        ]
+      },
+      {
+        "id": "TC-T1-004",
+        "name": "test_llm_client_integration",
+        "risk_id": "T1",
+        "severity": "Critical",
+        "module": "llm_client.py",
+        "preconditions": [
+          "llm_client.py importable",
+          "Mock LLM API"
+        ],
+        "actions": [
+          "Test client initialization with API key",
+          "Test chat completion request",
+          "Test error handling for API failures"
+        ],
+        "assertions": [
+          "Client initializes correctly",
+          "Requests formatted properly",
+          "Errors handled gracefully"
+        ],
+        "postconditions": []
+      },
+      {
+        "id": "TC-T1-005",
+        "name": "test_orchestrator_feedback_routing",
+        "risk_id": "T1",
+        "severity": "Critical",
+        "module": "orchestrator.py",
+        "preconditions": [
+          "orchestrator.py importable"
+        ],
+        "actions": [
+          "Test _route_feedback with various feedback types",
+          "Test orchestrator initialization",
+          "Test main orchestration flow"
+        ],
+        "assertions": [
+          "Feedback routes correctly",
+          "Unknown types logged appropriately",
+          "Orchestrator coordinates agents"
+        ],
+        "postconditions": []
+      }
+    ]
+  },
+  "feedback": []
+}
